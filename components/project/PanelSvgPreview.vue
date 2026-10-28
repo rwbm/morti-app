@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CompiledPanel, PanelOperation } from '~~/shared/domain/types'
+import { panelRoleLabel } from '~~/shared/domain/cutlist'
 import { useThemeColors } from '~~/composables/useThemeColors'
 
 interface Props {
@@ -184,7 +185,7 @@ const svgSegments = computed<SvgSegment[]>(() => {
   }))
 })
 
-const ariaLabel = computed(() => `Technical drawing for panel ${props.part.role}`)
+const ariaLabel = computed(() => `Vista de la pieza: ${panelRoleLabel(props.part.role)}`)
 </script>
 
 <template>

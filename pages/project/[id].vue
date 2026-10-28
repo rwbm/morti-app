@@ -7,6 +7,7 @@ definePageMeta({ layout: false })
 
 const LazyProjectCanvas = defineAsyncComponent(() => import('~/components/three/ProjectCanvas.vue'))
 const LazyProjectDesigner = defineAsyncComponent(() => import('~/components/project/ProjectDesigner.vue'))
+const LazyProjectConstructionEditor = defineAsyncComponent(() => import('~/components/project/ProjectConstructionEditor.vue'))
 const LazyProjectCutlist = defineAsyncComponent(() => import('~/components/project/ProjectCutlist.vue'))
 const LazyProjectCutlistPanelGrid = defineAsyncComponent(() => import('~/components/project/ProjectCutlistPanelGrid.vue'))
 const LazyAppConfirmDialog = defineAsyncComponent(() => import('~/components/app/AppConfirmDialog.vue'))
@@ -93,12 +94,14 @@ function updateMobileViewport() {
   isMobileViewport.value = mobileViewportQuery?.matches ?? false
 }
 
+const sidebarView = computed(() => viewMode.value === 'construction' || (styleTabFlag.value && viewMode.value === 'style'))
+
 const collapseEditorInputs = computed<boolean>(
   () => inputsCollapsed.value && viewMode.value === 'assembly',
 )
 const activeSplitRatio = computed<number>(() => {
   if (viewMode.value === 'cutlist') return isMobileViewport.value ? 0.46 : 0.5
-  if (styleTabFlag.value && viewMode.value === 'style') return isMobileViewport.value ? mobileSplitRatio.value : STYLE_DESKTOP_PREVIEW_RATIO
+  if (sidebarView.value) return isMobileViewport.value ? mobileSplitRatio.value : STYLE_DESKTOP_PREVIEW_RATIO
   if (collapseEditorInputs.value) return 1
   return isMobileViewport.value ? mobileSplitRatio.value : splitRatio.value
 })
@@ -628,7 +631,7 @@ const projectMenuItems = computed(() => [
 ])
 
 const topChromeMaxWidth = computed(() => {
-  if (viewMode.value === 'style' || collapseEditorInputs.value) {
+  if (sidebarView.value || collapseEditorInputs.value) {
     return 'min(40rem, calc(100vw - 24px))'
   }
   return `min(40rem, calc((1 - ${activeSplitRatio.value}) * 100vw - 24px))`
@@ -682,10 +685,10 @@ const canvasChromeTeleportSelector = computed(() =>
         :split-ratio="activeSplitRatio"
         :divider-locked="viewMode === 'cutlist'"
         :collapse-inputs="collapseEditorInputs"
-        :hide-divider="styleTabFlag && viewMode === 'style'"
-        :inputs-basis="styleTabFlag && viewMode === 'style' && !isMobileViewport ? '20rem' : ''"
+        :hide-divider="sidebarView"
+        :inputs-basis="sidebarView && !isMobileViewport ? '20rem' : ''"
         :reverse-on-mobile-stack="true"
-        :reverse-on-desktop="styleTabFlag && viewMode === 'style'"
+        :reverse-on-desktop="sidebarView"
         @update:split-ratio="onSplitRatioUpdate"
       >
         <!-- Inputs (left) pane -->
@@ -707,6 +710,11 @@ const canvasChromeTeleportSelector = computed(() =>
             v-model:selected-drawing-key="cutlistSelectedDrawingKey"
             :ydoc="(docRef as any)"
             class="min-h-0 flex-1 px-3 pb-3 sm:px-5 sm:pb-5"
+          />
+          <LazyProjectConstructionEditor
+            v-else-if="!userNeedsEmailVerification && viewMode === 'construction' && docRef"
+            :ydoc="(docRef as any)"
+            class="min-h-0 flex-1"
           />
           <div
             v-else-if="!userNeedsEmailVerification && styleTabFlag && viewMode === 'style'"
@@ -754,7 +762,7 @@ const canvasChromeTeleportSelector = computed(() =>
 
               <div class="relative h-full min-h-0 w-full">
                 <LazyProjectCanvas
-                  v-if="docRef && (viewMode === 'assembly' || (styleTabFlag && viewMode === 'style'))"
+                  v-if="docRef && (viewMode === 'assembly' || sidebarView)"
                   ref="projectCanvasRef"
                   :ydoc="(docRef as any)"
                   :public-style="publicStyle"
@@ -892,7 +900,7 @@ const canvasChromeTeleportSelector = computed(() =>
             size="xs"
             :variant="viewMode === 'assembly' ? 'solid' : 'ghost'"
             color="neutral"
-            label="Design"
+            label="Diseño"
             class="h-8 rounded-full transition-transform active:scale-[0.97]"
             @click="viewMode = 'assembly'"
           />
@@ -900,16 +908,24 @@ const canvasChromeTeleportSelector = computed(() =>
             size="xs"
             :variant="viewMode === 'cutlist' ? 'solid' : 'ghost'"
             color="neutral"
-            label="Cutlist"
+            label="Despiece"
             class="h-8 rounded-full transition-transform active:scale-[0.97]"
             @click="viewMode = 'cutlist'"
+          />
+          <UButton
+            size="xs"
+            :variant="viewMode === 'construction' ? 'solid' : 'ghost'"
+            color="neutral"
+            label="Estructura"
+            class="h-8 rounded-full transition-transform active:scale-[0.97]"
+            @click="viewMode = 'construction'"
           />
           <UButton
             v-if="styleTabFlag"
             size="xs"
             :variant="viewMode === 'style' ? 'solid' : 'ghost'"
             color="neutral"
-            label="Style"
+            label="Estilo"
             class="h-8 rounded-full transition-transform active:scale-[0.97]"
             @click="viewMode = 'style'"
           />

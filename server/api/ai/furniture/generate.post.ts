@@ -203,13 +203,14 @@ function compactCurrentDesign(current: FurnitureDoc): string {
         t: compactModuleType(module.type),
         h: module.height,
         ...(module.type === 'drawer' ? { n: module.drawerCount ?? 1 } : {}),
+        ...(module.interior ? { sc: module.interior.shelfCount } : {}),
       })),
     })),
   })
 }
 
 function furnitureInstructions(): string {
-  return 'Return JSON only: {c:[{w,m:[{t,h,n?}]}],g?,s?,w?}. Units meters. t=s shelf,d drawer,D paired doors,l left door,r right door. Modules are bottom-to-top. Use one d+n for a drawer bank. Fit requested width/height; practical cabinet/storage only; 1-8 cols; 1-12 modules/col. g keys: d depth,pt panel,bt back,fc front gap,so side overhang,pd pull diameter,pe pull inset,pg pull gap.'
+  return 'Return JSON only: {c:[{w,m:[{t,h,n?,sc?}]}],g?,s?,w?}. Units meters. t=s open,d drawer,D paired doors,l left door,r right door. sc=interior shelf count (0-32), independent of the front, supported for s,D,l,r. Modules are bottom-to-top. Use one d+n for a drawer bank. Fit requested width/height within g.cw and g.mh; practical cabinet/storage only; 1-8 cols; 1-12 modules/col. g keys: d depth,pt panel,bt back,fc front gap,so side overhang,pd pull diameter,pe pull inset,pg pull gap.'
 }
 
 function makeInput(prompt: string, current: FurnitureDoc, repairError?: string, badOutput?: unknown): string {
@@ -286,6 +287,8 @@ async function callCloudflareAi(prompt: string, current: FurnitureDoc, repairErr
 
 function validateDraft(payload: unknown, current: FurnitureDoc, prompt: string) {
   const draft = applyAiFurniturePromptIntent(normalizeAiFurnitureDraft(payload, current.config), prompt)
+  // AI edits the compartments; keep the construction chosen by the user.
+  draft.doc.construction = current.construction
   const compiled = compileAssembly(draft.doc)
   const errors = compiled.issues.filter(issue => issue.severity === 'error')
   if (errors.length > 0) {

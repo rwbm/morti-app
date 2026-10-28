@@ -13,6 +13,7 @@ import {
 } from '~~/shared/three/outline'
 import { makePanelMaterial } from '~~/shared/three/materials'
 import type { CompiledPanel, PanelOperation } from '~~/shared/domain/types'
+import { panelRoleLabel } from '~~/shared/domain/cutlist'
 
 interface Props {
   part: CompiledPanel
@@ -249,7 +250,7 @@ onBeforeUnmount(() => {
   disposePanelMesh()
 })
 
-const ariaLabel = computed(() => `Technical drawing for panel ${props.part.role}`)
+const ariaLabel = computed(() => `Vista de la pieza: ${panelRoleLabel(props.part.role)}`)
 </script>
 
 <template>

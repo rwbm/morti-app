@@ -1,11 +1,16 @@
 import type { CameraState, FurnitureColumn, FurnitureConfig, FurnitureModule, MaterialAssignment, ModuleType, PublicStyle } from './types'
 import { CUSTOM_MATERIAL_ID, DEFAULT_MATERIAL_ASSIGNMENTS, findPreset, MATERIAL_PRESETS } from './materials'
+import { inheritedThicknesses } from './thickness'
 
 // Default furniture config (Qe in compiled). All values in metres.
 export const DEFAULT_FURNITURE_CONFIG: FurnitureConfig = {
   depth: 0.45,
   panelThickness: 0.018,
   backPanelThickness: 0.02,
+  doorThickness: 0.018,
+  drawerFrontThickness: 0.018,
+  drawerPanelThickness: 0.018,
+  drawerBottomThickness: 0.02,
   panelJointClearance: 0.002,
   frontClearance: 0.002,
   sidePanelOverhang: 0.02,
@@ -17,9 +22,9 @@ export const DEFAULT_FURNITURE_CONFIG: FurnitureConfig = {
   drawerSlidesReserve: 0.01,
   backPanelInset: 0.01,
   minColumnWidth: 0.12,
-  maxColumnWidth: 1.2,
+  maxColumnWidth: 3,
   minModuleHeight: 0.08,
-  maxModuleHeight: 1.2,
+  maxModuleHeight: 3,
   minDrawerHeight: 0.08,
   maxDrawerHeight: 0.25,
 }
@@ -28,6 +33,10 @@ export const FURNITURE_CONFIG_WRITABLE_KEYS: (keyof FurnitureConfig)[] = [
   'depth',
   'panelThickness',
   'backPanelThickness',
+  'doorThickness',
+  'drawerFrontThickness',
+  'drawerPanelThickness',
+  'drawerBottomThickness',
   'panelJointClearance',
   'frontClearance',
   'sidePanelOverhang',
@@ -55,7 +64,7 @@ export const DRAWER_COUNT_MIN = 1
 export const DRAWER_COUNT_MAX = 32
 
 export function snapConfig(c: Partial<FurnitureConfig>): FurnitureConfig {
-  const r = { ...DEFAULT_FURNITURE_CONFIG, ...c }
+  const r = { ...DEFAULT_FURNITURE_CONFIG, ...c, ...inheritedThicknesses(c) }
   // round each metric to 1 mm to mirror the compiled Y.Doc metric grid
   for (const k of FURNITURE_CONFIG_WRITABLE_KEYS) {
     r[k] = Math.round(r[k] * 1_000) / 1_000

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import * as Y from 'yjs'
-import type { CloudProjectRecord, FurnitureColumn, FurnitureConfig, LocalProjectRow, PublicStyle } from '~~/shared/domain/types'
+import type { CloudProjectRecord, FurnitureColumn, FurnitureConfig, FurnitureConstruction, LocalProjectRow, PublicStyle } from '~~/shared/domain/types'
 import { normalizePublicStyle } from '~~/shared/domain/defaults'
 import { isRenderMessage, RENDER_MESSAGES } from '~~/shared/render/messages'
 import { ensureInitialized, readFurnitureDoc } from '~~/shared/yjs/doc'
@@ -85,6 +85,7 @@ const previewVideoBlob = ref<Blob | null>(null)
 const previewVideoUrl = ref<string | null>(null)
 const previewColumns = shallowRef<FurnitureColumn[]>([])
 const previewConfig = shallowRef<FurnitureConfig | null>(null)
+const previewConstruction = shallowRef<FurnitureConstruction | null>(null)
 const previewLoading = ref(false)
 let previewLoadSeq = 0
 let renderStartTimer: ReturnType<typeof setTimeout> | undefined
@@ -125,6 +126,7 @@ function resetStillPreview() {
   previewLoadSeq += 1
   previewColumns.value = []
   previewConfig.value = null
+  previewConstruction.value = null
   previewLoading.value = false
 }
 
@@ -137,6 +139,7 @@ async function loadStillPreview() {
     if (!bytes || bytes.byteLength === 0) {
       previewColumns.value = []
       previewConfig.value = null
+      previewConstruction.value = null
       return
     }
     const doc = new Y.Doc()
@@ -147,6 +150,7 @@ async function loadStillPreview() {
       if (seq !== previewLoadSeq) return
       previewColumns.value = data.columns
       previewConfig.value = data.config
+      previewConstruction.value = data.construction ?? null
     }
     finally {
       doc.destroy()
@@ -156,6 +160,7 @@ async function loadStillPreview() {
     if (seq === previewLoadSeq) {
       previewColumns.value = []
       previewConfig.value = null
+      previewConstruction.value = null
     }
   }
   finally {
@@ -365,6 +370,7 @@ async function unpublishProject() {
             v-else
             :columns="previewColumns"
             :furniture-config="previewConfig"
+            :construction="previewConstruction"
             class="size-full rounded-none border-0 ring-0"
           />
           <div

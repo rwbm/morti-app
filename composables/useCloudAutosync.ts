@@ -62,7 +62,7 @@ export function useCloudAutosync({ projectId, doc, project }: UseCloudAutosyncAr
         remoteMerged = true
       }
       const snapshot = readFurnitureDoc(doc)
-      const fp = getProjectFingerprint({ columns: snapshot.columns, config: snapshot.config })
+      const fp = getProjectFingerprint(snapshot)
       if (lastUploadedByProject.get(projectId) === fp) {
         syncStatus.value = 'synced'
         return

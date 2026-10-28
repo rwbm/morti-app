@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import type * as Y from 'yjs'
 import { compileAssembly } from '~~/shared/domain/assembly'
-import {
-  panelCutlistOrientation,
-  panelCutlistSignature,
-  panelGroupIds,
-} from '~~/shared/domain/cutlist'
-import type { CompiledPanel, FurnitureDoc, PanelOperation, PanelRole } from '~~/shared/domain/types'
+import { groupCutlistPanels, panelRoleLabel } from '~~/shared/domain/cutlist'
+import type { CutlistPanelGroup } from '~~/shared/domain/cutlist'
+import { formatMillimetres } from '~~/shared/domain/units'
+import type { FurnitureDoc } from '~~/shared/domain/types'
 import { readFurnitureDoc } from '~~/shared/yjs/doc'
 
 const PanelSvgPreview = defineAsyncComponent(() => import('~~/components/project/PanelSvgPreview.vue'))
@@ -57,52 +55,8 @@ if (getCurrentScope()) {
 
 const compiled = computed(() => snapshot.value ? compileAssembly(snapshot.value) : { panels: [], operations: [], issues: [] })
 
-interface PanelGroup {
-  key: string
-  groupId: string
-  representative: CompiledPanel
-  operations: PanelOperation[]
-  quantity: number
-  width: number
-  height: number
-  thickness: number
-}
-
-const panelGroups = computed<PanelGroup[]>(() => {
-  const grouped = new Map<string, Omit<PanelGroup, 'groupId'>>()
-  const { panels, operations } = compiled.value
-
-  for (const panel of panels) {
-    const key = panelCutlistSignature(panel, operations)
-    const existing = grouped.get(key)
-    if (existing) {
-      existing.quantity += 1
-      continue
-    }
-
-    grouped.set(key, {
-      key,
-      representative: panel,
-      operations: operations.filter(op => op.targetPanelKey === panel.key),
-      quantity: 1,
-      width: Math.max(0, panel.width),
-      height: Math.max(0, panel.height),
-      thickness: Math.max(0, panel.thickness),
-    })
-  }
-
-  const rows = [...grouped.values()].sort((a, b) =>
-    a.representative.role !== b.representative.role
-      ? a.representative.role.localeCompare(b.representative.role)
-      : a.width !== b.width
-        ? b.width - a.width
-        : a.height !== b.height
-          ? b.height - a.height
-          : b.thickness - a.thickness,
-  )
-  const ids = panelGroupIds(rows)
-  return rows.map((row, index) => ({ ...row, groupId: ids[index] }))
-})
+type PanelGroup = CutlistPanelGroup
+const panelGroups = computed(() => groupCutlistPanels(compiled.value.panels, compiled.value.operations))
 
 function isSelectedGroup(group: PanelGroup) {
   return props.selectedDrawingKey === group.key || props.selectedDrawingKey === group.groupId
@@ -147,9 +101,6 @@ function stopSelectedCanvasClick(group: PanelGroup, event: MouseEvent) {
   if (isSelectedGroup(group)) event.stopPropagation()
 }
 
-function formatMm(value: number): string {
-  return (value * 1000).toFixed(0)
-}
 </script>
 
 <template>
@@ -161,7 +112,7 @@ function formatMm(value: number): string {
       v-if="panelGroups.length === 0"
       class="flex h-full items-center justify-center text-sm text-muted"
     >
-      No panels yet
+      Todavía no hay piezas
     </div>
     <div
       v-else
@@ -207,14 +158,13 @@ function formatMm(value: number): string {
               {{ group.groupId }}
             </span>
             <div
-              v-if="isShowingSelectedPanel"
               class="min-w-0 flex-1"
             >
               <div class="truncate text-balance text-xs font-semibold text-highlighted">
-                {{ group.representative.role }}
+                {{ panelRoleLabel(group.representative.role) }}
               </div>
-              <div class="truncate text-xs tabular-nums text-muted">
-                {{ formatMm(group.width) }} × {{ formatMm(group.height) }} × {{ formatMm(group.thickness) }} mm
+              <div class="text-xs tabular-nums text-muted">
+                {{ formatMillimetres(group.width) }} × {{ formatMillimetres(group.height) }} × {{ formatMillimetres(group.thickness) }} mm
               </div>
             </div>
           </div>

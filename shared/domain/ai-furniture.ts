@@ -5,6 +5,8 @@ import {
   cryptoRandomId,
   snapConfig,
 } from './defaults'
+import { INTERIOR_SHELF_COUNT_MAX, normalizeShelfCount } from './interior'
+import { normalizeConstruction } from './construction'
 import {
   DESIGN_SCHEMA_VERSION,
   type FurnitureColumn,
@@ -41,6 +43,10 @@ const CONFIG_PATCH_KEYS: (keyof FurnitureConfig)[] = [
   'depth',
   'panelThickness',
   'backPanelThickness',
+  'doorThickness',
+  'drawerFrontThickness',
+  'drawerPanelThickness',
+  'drawerBottomThickness',
   'frontClearance',
   'sidePanelOverhang',
   'pullHoleDiameter',
@@ -119,6 +125,7 @@ function cloneDraft(draft: AiFurnitureDraft): AiFurnitureDraft {
       schemaVersion: draft.doc.schemaVersion,
       lastAppliedMigrationId: draft.doc.lastAppliedMigrationId,
       config: { ...draft.doc.config },
+      construction: normalizeConstruction(draft.doc.construction),
       columns: draft.doc.columns.map(column => ({
         width: column.width,
         modules: column.modules.map(module => ({ ...module })),
@@ -256,6 +263,9 @@ function normalizeModule(raw: unknown, config: FurnitureConfig, warnings: string
     height: snapMetric(height),
   }
 
+  if (isRecord(source.interior)) {
+    module.interior = { shelfCount: normalizeShelfCount(source.interior.shelfCount) }
+  }
   if (type === 'drawer') {
     let drawerCount = normalizeDrawerCount(source.drawerCount)
     const maxByHeight = Math.max(1, Math.floor(module.height / Math.max(0.001, config.minDrawerHeight)))
@@ -278,6 +288,7 @@ function normalizeCompactModule(raw: unknown, config: FurnitureConfig, warnings:
       type: raw[0],
       height: raw[1],
       drawerCount: raw[2],
+      interior: { shelfCount: raw[3] },
     }, config, warnings)
   }
   const source = isRecord(raw) ? raw : {}
@@ -285,6 +296,7 @@ function normalizeCompactModule(raw: unknown, config: FurnitureConfig, warnings:
     type: source.t ?? source.type,
     height: source.h ?? source.height,
     drawerCount: source.n ?? source.drawerCount,
+    interior: source.interior ?? { shelfCount: source.sc },
   }, config, warnings)
 }
 
@@ -333,6 +345,7 @@ export function normalizeAiFurnitureCurrentDoc(input: unknown): FurnitureDoc {
     lastAppliedMigrationId: null,
     config,
     columns,
+    construction: normalizeConstruction(source.construction),
   }
 }
 
@@ -409,7 +422,7 @@ export const AI_FURNITURE_RESPONSE_SCHEMA = {
         additionalProperties: false,
         required: ['w', 'm'],
         properties: {
-          w: { type: 'number', minimum: 0.12, maximum: 1.2 },
+          w: { type: 'number', minimum: 0.12, maximum: DEFAULT_FURNITURE_CONFIG.maxColumnWidth },
           m: {
             type: 'array',
             minItems: 1,
@@ -423,8 +436,9 @@ export const AI_FURNITURE_RESPONSE_SCHEMA = {
                   type: 'string',
                   enum: COMPACT_MODULE_TYPES,
                 },
-                h: { type: 'number', minimum: 0.08, maximum: 1.2 },
+                h: { type: 'number', minimum: 0.08, maximum: DEFAULT_FURNITURE_CONFIG.maxModuleHeight },
                 n: { type: 'integer', minimum: DRAWER_COUNT_MIN, maximum: DRAWER_COUNT_MAX },
+                sc: { type: 'integer', minimum: 0, maximum: INTERIOR_SHELF_COUNT_MAX },
               },
             },
           },

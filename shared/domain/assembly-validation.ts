@@ -1,33 +1,16 @@
+import { drawerDepthBounds, moduleFrontThickness, THICKNESS_FIELDS, inheritedThicknesses } from './thickness'
+import { buildCellGrid, type CellBounds, type CompiledCellBounds } from './layout'
+import { floorUnderside, legCenters, normalizeConstruction } from './construction'
 import type {
   CompiledAssemblyIssue,
   FurnitureColumn,
   FurnitureConfig,
   FurnitureDoc,
-  FurnitureModule,
+  FurnitureConstruction,
 } from '~~/shared/domain/types'
+import { interiorOpeningHeight, interiorShelfCount } from './interior'
 
 const DEGENERATE_MIN_SIZE = 0.001
-
-interface CellBounds {
-  moduleId: string
-  columnIndex: number
-  moduleIndex: number
-  width: number
-  height: number
-  depth: number
-  frontWidth: number
-  frontHeight: number
-}
-
-interface CompiledCellBounds extends CellBounds {
-  xMin: number
-  xMax: number
-  yMin: number
-  yMax: number
-  zMin: number
-  zMax: number
-  frontZ: number
-}
 
 function makeIssue(
   code: string,
@@ -45,58 +28,28 @@ function makeIssue(
   }
 }
 
-function buildCellGrid(columns: FurnitureColumn[], config: FurnitureConfig): CompiledCellBounds[][] {
-  const totalWidth = columns.reduce((sum, column) => sum + column.width, 0)
-  const halfWidth = totalWidth / 2
-  const cells: CompiledCellBounds[][] = []
-  let cursorX = 0
 
-  for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
-    const column = columns[columnIndex]
-    const columnWidth = column.width
-    const columnCenterX = cursorX + columnWidth / 2 - halfWidth
-    cursorX += columnWidth
-
-    const columnCells: CompiledCellBounds[] = []
-    let moduleBaseY = 0
-    for (let moduleIndex = 0; moduleIndex < column.modules.length; moduleIndex++) {
-      const module = column.modules[moduleIndex]
-      const moduleTopY = moduleBaseY + module.height
-      const xMin = columnCenterX - columnWidth / 2 + config.panelThickness / 2 + config.panelJointClearance
-      const xMax = columnCenterX + columnWidth / 2 - config.panelThickness / 2 - config.panelJointClearance
-      const yMin = moduleBaseY + config.panelThickness / 2 + config.panelJointClearance
-      const yMax = moduleTopY - config.panelThickness / 2 - config.panelJointClearance
-      const zMin = -config.depth / 2 + config.backPanelInset + config.backPanelThickness + config.panelJointClearance
-      const zMax = config.depth / 2 - config.panelJointClearance
-      columnCells.push({
-        moduleId: module.id,
-        columnIndex,
-        moduleIndex,
-        xMin,
-        xMax,
-        yMin,
-        yMax,
-        zMin,
-        zMax,
-        width: xMax - xMin,
-        height: yMax - yMin,
-        depth: zMax - zMin,
-        frontZ: config.depth / 2 - config.panelThickness / 2,
-        frontWidth: xMax - xMin - 2 * config.frontClearance,
-        frontHeight: yMax - yMin - 2 * config.frontClearance,
-      })
-      moduleBaseY = moduleTopY
-    }
-    cells.push(columnCells)
-  }
-
-  return cells
-}
-
-function validateCompiledCells(columns: FurnitureColumn[], cells: CompiledCellBounds[][], config: FurnitureConfig): CompiledAssemblyIssue[] {
+function validateCompiledCells(columns: FurnitureColumn[], cells: CompiledCellBounds[][], config: FurnitureConfig, construction: FurnitureConstruction): CompiledAssemblyIssue[] {
   const issues: CompiledAssemblyIssue[] = []
-  if (config.backPanelInset + config.backPanelThickness + config.panelJointClearance >= config.depth) {
-    issues.push(makeIssue('back-reserve-overflows-depth', 'Back panel inset, back thickness, and joint clearance exceed cabinet depth.'))
+  for (const field of THICKNESS_FIELDS) {
+    const value = config[field.key]
+    if (!Number.isFinite(value) || value <= 0) issues.push(makeIssue(`invalid-thickness-${field.key}`, `El espesor de ${field.label.toLowerCase()} debe ser mayor que cero.`))
+  }
+  if (construction.back && config.backPanelInset + config.backPanelThickness + config.panelJointClearance >= config.depth) {
+    issues.push(makeIssue('back-reserve-overflows-depth', 'El retiro del fondo, su espesor y la holgura superan la profundidad del mueble.'))
+  }
+  if (construction.legs.enabled) {
+    if (!construction.bottom) issues.push(makeIssue('legs-require-bottom', 'Las patas requieren un piso donde apoyarse. Activá el piso o quitá las patas.'))
+    if (construction.legs.height <= floorUnderside(config)) {
+      issues.push(makeIssue('legs-too-short', 'Aumentá el alto de las patas o reducí la prolongación de los laterales.'))
+    }
+    for (const [columnIndex, column] of columns.entries()) {
+      if (!column.modules.length) continue
+      const centers = legCenters(column.width, config.depth, config, construction)
+      if (centers.x[1] - centers.x[0] < construction.legs.width || centers.z[1] - centers.z[0] < construction.legs.width) {
+        issues.push({ ...makeIssue('legs-do-not-fit', 'Las patas no caben bajo esta columna. Reducí su sección o retiro, o aumentá el ancho y la profundidad.'), columnIndex })
+      }
+    }
   }
 
   for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
@@ -106,28 +59,37 @@ function validateCompiledCells(columns: FurnitureColumn[], cells: CompiledCellBo
       const module = column.modules[moduleIndex]
       const cell = columnCells[moduleIndex]
       if (!cell) continue
-      if (cell.width < DEGENERATE_MIN_SIZE) issues.push(makeIssue('cell-too-narrow', 'Module interior is too narrow.', cell))
-      if (cell.height < DEGENERATE_MIN_SIZE) issues.push(makeIssue('cell-too-short', 'Module interior is too short.', cell))
-      if (cell.depth < DEGENERATE_MIN_SIZE) issues.push(makeIssue('cell-too-shallow', 'Module interior is too shallow.', cell))
+      if (interiorShelfCount(module) > 0 && interiorOpeningHeight(module, config) < config.minModuleHeight) {
+        issues.push(makeIssue('interior-openings-too-short', 'Reducí la cantidad de estantes o aumentá el alto del módulo para dejar espacio entre ellos.', cell))
+      }
+      if (interiorShelfCount(module) > 0 && cell.frontZ - moduleFrontThickness(module, config) / 2 - config.frontClearance - cell.zMin < DEGENERATE_MIN_SIZE) {
+        issues.push(makeIssue('interior-shelf-too-shallow', 'La profundidad del módulo no alcanza para ubicar estantes detrás del frente.', cell))
+      }
+      if (cell.width < DEGENERATE_MIN_SIZE) issues.push(makeIssue('cell-too-narrow', 'El interior del módulo es demasiado angosto.', cell))
+      if (cell.height < DEGENERATE_MIN_SIZE) issues.push(makeIssue('cell-too-short', 'El interior del módulo es demasiado bajo.', cell))
+      if (cell.depth < DEGENERATE_MIN_SIZE) issues.push(makeIssue('cell-too-shallow', 'El interior del módulo tiene muy poca profundidad.', cell))
       if (cell.frontWidth < DEGENERATE_MIN_SIZE || cell.frontHeight < DEGENERATE_MIN_SIZE) {
-        issues.push(makeIssue('front-degenerate', 'Module front face is too small.', cell))
+        issues.push(makeIssue('front-degenerate', 'El frente del módulo es demasiado pequeño.', cell))
       }
       if (module.type === 'doors' && cell.frontWidth / 2 < DEGENERATE_MIN_SIZE) {
-        issues.push(makeIssue('paired-door-too-narrow', 'Paired door leaves are too narrow after front clearance.', cell))
+        issues.push(makeIssue('paired-door-too-narrow', 'Las hojas de puerta quedan demasiado angostas al descontar las holguras.', cell))
       }
       if (module.type === 'drawer') {
         if (config.drawerSlidesReserve >= cell.depth) {
-          issues.push(makeIssue('slides-reserve-overflows-cell', 'Drawer slides reserve exceeds the module depth.', cell))
+          issues.push(makeIssue('slides-reserve-overflows-cell', 'La reserva para las correderas supera la profundidad del módulo.', cell))
         }
         const drawerCount = Math.max(1, Math.floor(module.drawerCount ?? 1))
         const frontBandHeight = (cell.height - config.frontClearance * (drawerCount + 1)) / drawerCount
         const drawerBoxBandHeight = (cell.height - 2 * config.panelJointClearance * Math.max(0, drawerCount - 1)) / drawerCount - 2 * config.drawerBottomInset - 2 * config.panelJointClearance
-        const drawerBackBandHeight = drawerBoxBandHeight - config.backPanelInset - config.backPanelThickness
+        const drawerBackBandHeight = drawerBoxBandHeight - config.backPanelInset - config.drawerBottomThickness
         if (frontBandHeight < DEGENERATE_MIN_SIZE || drawerBoxBandHeight < DEGENERATE_MIN_SIZE || drawerBackBandHeight < DEGENERATE_MIN_SIZE) {
-          issues.push(makeIssue('drawer-band-too-short', 'Drawer band is too short for the front, bottom board, side/back panels, and clearances.', cell))
+          issues.push(makeIssue('drawer-band-too-short', 'El alto de cada cajón no alcanza para el frente, el fondo, los laterales y las holguras.', cell))
         }
-        if (cell.depth - config.drawerSlidesReserve < DEGENERATE_MIN_SIZE) {
-          issues.push(makeIssue('drawer-depth-too-shallow', 'Drawer box depth is too shallow after the slides reserve.', cell))
+        if (cell.width - 2 * config.panelJointClearance - 2 * config.drawerPanelThickness < DEGENERATE_MIN_SIZE) {
+          issues.push(makeIssue('drawer-width-too-narrow', 'El espesor de los laterales no deja espacio útil en el cajón.', cell))
+        }
+        if (drawerDepthBounds(cell, config).sideLength < DEGENERATE_MIN_SIZE) {
+          issues.push(makeIssue('drawer-depth-too-shallow', 'La caja del cajón queda sin profundidad suficiente al descontar la reserva para las correderas.', cell))
         }
       }
     }
@@ -136,10 +98,11 @@ function validateCompiledCells(columns: FurnitureColumn[], cells: CompiledCellBo
 }
 
 export function validateFurnitureDocIssues(furnitureDoc: FurnitureDoc): CompiledAssemblyIssue[] {
-  const config = furnitureDoc.config
+  const config = { ...furnitureDoc.config, ...inheritedThicknesses(furnitureDoc.config) }
   const columns = furnitureDoc.columns
   if (columns.length === 0) return []
   const totalWidth = columns.reduce((sum, column) => sum + column.width, 0)
   if (!(totalWidth > 0)) return []
-  return validateCompiledCells(columns, buildCellGrid(columns, config), config)
+  const construction = normalizeConstruction(furnitureDoc.construction)
+  return validateCompiledCells(columns, buildCellGrid(columns, config, construction), config, construction)
 }

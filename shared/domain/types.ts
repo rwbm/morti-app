@@ -5,6 +5,8 @@ export interface FurnitureModule {
   type: ModuleType
   height: number // metres
   drawerCount?: number // 1..32, drawer only
+  /** Interior layout, independent of the front. Missing means an empty interior. */
+  interior?: { shelfCount: number }
 }
 
 export interface FurnitureColumn {
@@ -12,10 +14,32 @@ export interface FurnitureColumn {
   modules: FurnitureModule[]
 }
 
+export interface FurnitureConstruction {
+  leftSide: boolean
+  rightSide: boolean
+  top: boolean
+  bottom: boolean
+  back: boolean
+  legs: {
+    enabled: boolean
+    height: number
+    width: number
+    inset: number
+  }
+}
+
+export type ConstructionPatch = Partial<Omit<FurnitureConstruction, 'legs'>> & {
+  legs?: Partial<FurnitureConstruction['legs']>
+}
+
 export interface FurnitureConfig {
   depth: number
   panelThickness: number
   backPanelThickness: number
+  doorThickness: number
+  drawerFrontThickness: number
+  drawerPanelThickness: number
+  drawerBottomThickness: number
   panelJointClearance: number
   frontClearance: number
   sidePanelOverhang: number
@@ -39,6 +63,7 @@ export interface FurnitureDoc {
   lastAppliedMigrationId: string | null
   config: FurnitureConfig
   columns: FurnitureColumn[]
+  construction?: FurnitureConstruction
 }
 
 export type RenderStyle = 'rendered' | 'technical'
@@ -119,7 +144,7 @@ export interface LocalProjectRow {
   pinned?: boolean
 }
 
-export type ViewMode = 'assembly' | 'cutlist' | 'style'
+export type ViewMode = 'assembly' | 'cutlist' | 'style' | 'construction'
 
 export interface CameraState {
   position: [number, number, number]
@@ -153,6 +178,7 @@ export type PanelRole =
   | 'drawer-side'
   | 'drawer-back'
   | 'drawer-bottom'
+  | 'leg'
 
 export type OperationType = 'through-hole' | 'rail-cut'
 
@@ -242,8 +268,9 @@ export const PANEL_ROLE_SHORT_CODE: Record<PanelRole, string> = {
   'drawer-side': 'DRS',
   'drawer-back': 'DRB',
   'drawer-bottom': 'DBM',
+  leg: 'P',
 }
 
-export const DESIGN_SCHEMA_VERSION = 3
-export const ASSEMBLY_COMPILER_VERSION = 1
+export const DESIGN_SCHEMA_VERSION = 6
+export const ASSEMBLY_COMPILER_VERSION = 5
 export const TECHNICAL_RENDERER_VERSION = 1

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import type { CloudProjectRecord, FurnitureColumn, FurnitureConfig, LocalProjectRow } from '~~/shared/domain/types'
+import type { CloudProjectRecord, FurnitureColumn, FurnitureConfig, FurnitureConstruction, LocalProjectRow } from '~~/shared/domain/types'
 
 interface PreviewData {
   columns: FurnitureColumn[]
   config: FurnitureConfig | null
+  construction?: FurnitureConstruction
 }
 
 const { user, isAuthed, isCloudAuthed, isLocalBypass, signOut } = useAuth()
@@ -76,7 +77,7 @@ async function decodeSnapshotBytes(bytes: Uint8Array): Promise<PreviewData> {
     Y.applyUpdate(doc, bytes)
     ensureInitialized(doc)
     const data = readFurnitureDoc(doc)
-    return { columns: data.columns, config: data.config }
+    return { columns: data.columns, config: data.config, construction: data.construction }
   }
   catch {
     return blankPreview()
@@ -457,6 +458,7 @@ function isDemo(projectId: string): boolean {
               :to="`/p/${project.id}`"
               :preview-columns="previewForDemo(project.id).columns"
               :preview-config="previewForDemo(project.id).config"
+              :preview-construction="previewForDemo(project.id).construction"
               :show-actions="false"
               :show-date="false"
             />
@@ -473,6 +475,7 @@ function isDemo(projectId: string): boolean {
             :project="project"
             :preview-columns="previewForLocal(project.id).columns"
             :preview-config="previewForLocal(project.id).config"
+            :preview-construction="previewForLocal(project.id).construction"
             :published="isPublished(project.id)"
             :demo="isAdmin && isDemo(project.id)"
             :admin-actions="isAdmin"
@@ -519,6 +522,7 @@ function isDemo(projectId: string): boolean {
             :to="`/p/${project.id}`"
             :preview-columns="previewForDemo(project.id).columns"
             :preview-config="previewForDemo(project.id).config"
+            :preview-construction="previewForDemo(project.id).construction"
             :show-actions="false"
             :show-date="false"
           />

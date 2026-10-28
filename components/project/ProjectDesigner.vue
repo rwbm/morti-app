@@ -5,6 +5,8 @@ import { AI_FURNITURE_PROMPT_MAX_LENGTH } from '~~/shared/domain/ai-furniture'
 import { DEFAULT_COLUMN_WIDTH, DEFAULT_DRAWER_COUNT, DRAWER_COUNT_MAX, DRAWER_COUNT_MIN, DEFAULT_FURNITURE_CONFIG, FURNITURE_CONFIG_WRITABLE_KEYS, MODULE_TYPES } from '~~/shared/domain/defaults'
 import type { FurnitureConfig, FurnitureModule, ModuleType } from '~~/shared/domain/types'
 import { validateFurnitureDocIssues } from '~~/shared/domain/assembly-validation'
+import { INTERIOR_SHELF_COUNT_MAX, interiorShelfCount } from '~~/shared/domain/interior'
+import { normalizeConstruction } from '~~/shared/domain/construction'
 import {
   insertColumn,
   insertModule,
@@ -15,6 +17,7 @@ import {
   setColumnWidth,
   setConfigValue,
   setDrawerCount,
+  setInteriorShelfCount,
   setModuleHeight,
   setModuleType,
 } from '~~/shared/yjs/doc'
@@ -69,6 +72,7 @@ if (getCurrentScope()) {
 
 const columns = computed(() => snapshot.value.columns)
 const config = computed<FurnitureConfig>(() => snapshot.value.config)
+const construction = computed(() => normalizeConstruction(snapshot.value.construction))
 const effectiveConfig = computed(() => config.value)
 
 const internalSelectedIds = ref<string[]>([])
@@ -103,7 +107,7 @@ const inspectorIssues = computed<DesignerIssue[]>(() => validateFurnitureDocIssu
 const visibleIssues = computed(() => {
   if (selectedCount.value === 0) return inspectorIssues.value.filter(issue => issue.moduleId == null)
   const ids = new Set(selectedModuleInfos.value.map(info => info.id))
-  return inspectorIssues.value.filter(issue => issue.moduleId != null && ids.has(issue.moduleId))
+  return inspectorIssues.value.filter(issue => issue.moduleId == null || ids.has(issue.moduleId))
 })
 
 // --- Selection helpers ---
@@ -353,6 +357,10 @@ interface ConfigField {
 const configFieldLabels: Record<string, { label: string, unit: 'm' | 'mm', help: string }> = {
   depth: { label: 'Depth', unit: 'm', help: 'Overall front-to-back depth of the furniture piece.' },
   panelThickness: { label: 'Panel thickness', unit: 'mm', help: 'Thickness of structural panels (sides, decks, dividers).' },
+  doorThickness: { label: 'Espesor de puertas', unit: 'mm', help: 'Espesor de las puertas, independiente del cuerpo.' },
+  drawerFrontThickness: { label: 'Espesor de frentes de cajón', unit: 'mm', help: 'Espesor de los frentes, independiente de la caja del cajón.' },
+  drawerPanelThickness: { label: 'Espesor de cajas de cajón', unit: 'mm', help: 'Espesor de los laterales y traseras de los cajones.' },
+  drawerBottomThickness: { label: 'Espesor de fondos de cajón', unit: 'mm', help: 'Espesor del fondo de los cajones; determina el ancho de sus ranuras.' },
   backPanelThickness: { label: 'Back panel thickness', unit: 'mm', help: 'Thickness of the back panel, typically thinner than structural panels.' },
   panelJointClearance: { label: 'Panel joint clearance', unit: 'mm', help: 'Small fit allowance at carcass joints and vertical gap above/below each drawer (same value subtracted at top and bottom of the drawer band).' },
   frontClearance: { label: 'Front clearance', unit: 'mm', help: 'Visible/functional gap around drawer and door fronts so they open without binding.' },
@@ -459,9 +467,22 @@ const selectedDrawerCountValue = computed(() => {
   return typeof first === 'number' && selectedModuleInfos.value.every(info => info.module.type === 'drawer' && info.module.drawerCount === first) ? String(first) : ''
 })
 
+const selectedSupportsShelves = computed(() => selectedCount.value > 0
+  && selectedModuleInfos.value.every(info => info.module.type !== 'drawer'))
+const selectedShelfCountValue = computed(() => {
+  const first = selectedModuleInfos.value[0]?.module
+  if (!first) return ''
+  const count = interiorShelfCount(first)
+  return selectedModuleInfos.value.every(info => interiorShelfCount(info.module) === count) ? String(count) : ''
+})
+
 const selectedTypeItems = computed(() => [
-  { value: '__multiple__', label: 'multiple' },
-  ...MODULE_TYPES.map(type => ({ value: type, label: type })),
+  { value: '__multiple__', label: 'Varios' },
+  { value: 'shelf', label: 'Abierto' },
+  { value: 'drawer', label: 'Cajones' },
+  { value: 'doors', label: 'Dos puertas' },
+  { value: 'left-door', label: 'Puerta con bisagra izquierda' },
+  { value: 'right-door', label: 'Puerta con bisagra derecha' },
 ])
 
 function parsePositiveMetric(value: string): number | null {
@@ -671,6 +692,22 @@ function onSelectedDrawerCountCommit(event: Event) {
   input.value = String(next)
 }
 
+function onSelectedShelfCountCommit(event: Event) {
+  const input = event.target as HTMLInputElement | null
+  if (!input) return
+  const value = input.value.trim() === '' ? NaN : Number(input.value)
+  if (!Number.isInteger(value) || value < 0 || value > INTERIOR_SHELF_COUNT_MAX) {
+    input.value = selectedShelfCountValue.value
+    return
+  }
+  props.ydoc.transact(() => {
+    for (const info of selectedModuleInfos.value) {
+      setInteriorShelfCount(props.ydoc, info.columnIndex, info.moduleIndex, value)
+    }
+  }, 'setInteriorShelfCount')
+  input.value = selectedShelfCountValue.value
+}
+
 if (getCurrentScope()) {
   onScopeDispose(() => {
     abortAiGeneration()
@@ -684,6 +721,7 @@ if (getCurrentScope()) {
     <ProjectDesignerFrontView
       :columns="columns"
       :config="config"
+      :construction="construction"
       :selected-module-ids="selectedIds"
       :zoom-percent="clampedZoomPercent"
       class="relative z-0 min-h-0 w-full flex-1"
@@ -729,7 +767,7 @@ if (getCurrentScope()) {
               <article class="grid gap-3 rounded-lg bg-default p-3 text-sm shadow-sm">
                 <div class="flex min-w-0 items-center justify-between gap-2">
                   <h2 class="min-w-0 text-balance font-medium text-highlighted tabular-nums">
-                    {{ selectedCount }} selected
+                    {{ selectedCount }} {{ selectedCount === 1 ? 'módulo seleccionado' : 'módulos seleccionados' }}
                   </h2>
                   <UButton
                     v-if="aiFurnitureEnabled"
@@ -745,7 +783,7 @@ if (getCurrentScope()) {
 
                 <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
                   <dt class="self-center text-muted">
-                    Type
+                    Frente
                   </dt>
                   <dd class="min-w-0">
                     <USelect
@@ -759,7 +797,7 @@ if (getCurrentScope()) {
                   </dd>
 
                   <dt class="self-center text-muted">
-                    Width
+                    Ancho
                   </dt>
                   <dd class="min-w-0">
                     <div class="flex items-center gap-1">
@@ -768,8 +806,8 @@ if (getCurrentScope()) {
                         type="text"
                         inputmode="decimal"
                         class="w-full min-w-0 rounded-md bg-muted px-2 py-1 text-xs tabular-nums text-highlighted shadow-sm outline-none ring-0 transition-colors duration-150 focus:bg-elevated"
-                        placeholder="mixed"
-                        aria-label="Column width for selected modules in meters"
+                        placeholder="Varios"
+                        aria-label="Ancho de las columnas seleccionadas en metros"
                         @keydown.enter.prevent="onSelectedColumnWidthCommit"
                         @blur="onSelectedColumnWidthCommit"
                       >
@@ -778,7 +816,7 @@ if (getCurrentScope()) {
                   </dd>
 
                   <dt class="self-center text-muted">
-                    Height
+                    Alto
                   </dt>
                   <dd class="min-w-0">
                     <div class="flex items-center gap-1">
@@ -787,8 +825,8 @@ if (getCurrentScope()) {
                         type="text"
                         inputmode="decimal"
                         class="w-full min-w-0 rounded-md bg-muted px-2 py-1 text-xs tabular-nums text-highlighted shadow-sm outline-none ring-0 transition-colors duration-150 focus:bg-elevated"
-                        placeholder="mixed"
-                        aria-label="Selected modules height in meters"
+                        placeholder="Varios"
+                        aria-label="Alto de los módulos seleccionados en metros"
                         @keydown.enter.prevent="onSelectedHeightCommit"
                         @blur="onSelectedHeightCommit"
                       >
@@ -798,7 +836,7 @@ if (getCurrentScope()) {
 
                   <template v-if="selectedTypeValue === 'drawer'">
                     <dt class="self-center text-muted">
-                      Drawers
+                      Cajones
                     </dt>
                     <dd class="min-w-0">
                       <input
@@ -806,11 +844,27 @@ if (getCurrentScope()) {
                         type="text"
                         inputmode="numeric"
                         class="w-full min-w-0 rounded-md bg-muted px-2 py-1 text-xs tabular-nums text-highlighted shadow-sm outline-none ring-0 transition-colors duration-150 focus:bg-elevated"
-                        placeholder="mixed"
-                        aria-label="Number of drawers in selected modules"
+                        placeholder="Varios"
+                        aria-label="Cantidad de cajones en los módulos seleccionados"
                         @keydown.enter.prevent="onSelectedDrawerCountCommit"
                         @blur="onSelectedDrawerCountCommit"
                       >
+                    </dd>
+                  </template>
+                  <template v-if="selectedSupportsShelves">
+                    <dt class="self-center text-muted">Estantes interiores</dt>
+                    <dd class="min-w-0">
+                      <input
+                        :value="selectedShelfCountValue"
+                        type="text"
+                        inputmode="numeric"
+                        class="w-full min-w-0 rounded-md bg-muted px-2 py-1 text-xs tabular-nums text-highlighted shadow-sm outline-none focus:bg-elevated"
+                        placeholder="Varios"
+                        aria-label="Cantidad de estantes interiores en los módulos seleccionados"
+                        @keydown.enter.prevent="onSelectedShelfCountCommit"
+                        @blur="onSelectedShelfCountCommit"
+                      >
+                      <p class="mt-1 text-muted">Distribuidos a igual distancia. Usá 0 para dejar el interior vacío.</p>
                     </dd>
                   </template>
                 </dl>
@@ -820,7 +874,7 @@ if (getCurrentScope()) {
                   block
                   color="error"
                   icon="i-lucide-trash-2"
-                  label="Delete module"
+                  label="Eliminar módulo"
                   size="xs"
                   variant="soft"
                   class="justify-self-stretch active:scale-[0.97] transition-transform duration-150"
@@ -1048,6 +1102,7 @@ if (getCurrentScope()) {
           <ProjectPreview
             :columns="aiDraft.doc.columns"
             :config="aiDraft.doc.config"
+            :construction="aiDraft.doc.construction"
           />
         </div>
         <div class="grid gap-2 text-xs">

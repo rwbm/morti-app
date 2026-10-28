@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { FurnitureColumn, FurnitureConfig } from '~~/shared/domain/types'
+import type { FurnitureColumn, FurnitureConfig, FurnitureConstruction } from '~~/shared/domain/types'
 
 interface CardProject {
   id: string
@@ -13,6 +13,7 @@ interface Props {
   to?: string
   previewColumns?: FurnitureColumn[]
   previewConfig?: FurnitureConfig | null
+  previewConstruction?: FurnitureConstruction | null
   published?: boolean
   demo?: boolean
   adminActions?: boolean
@@ -103,6 +104,7 @@ const menuItems = computed(() => [
         <ProjectPreview
           :columns="previewColumns ?? []"
           :furniture-config="previewConfig"
+          :construction="previewConstruction"
           class="aspect-square w-full"
         />
         <div

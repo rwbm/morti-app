@@ -1,14 +1,20 @@
 <script setup lang="ts">
-import type { FurnitureColumn, FurnitureConfig, FurnitureModule } from '~~/shared/domain/types'
+import ProjectFrontLegs from './ProjectFrontLegs.vue'
+import type { FurnitureColumn, FurnitureConfig, FurnitureModule, FurnitureConstruction } from '~~/shared/domain/types'
+import { interiorShelfCount } from '~~/shared/domain/interior'
+import { constructionBodyLift, normalizeConstruction } from '~~/shared/domain/construction'
 
 interface Props {
   columns: FurnitureColumn[]
   config: FurnitureConfig
   selectedModuleIds: string[]
   zoomPercent: number
+  construction?: FurnitureConstruction
 }
 
 const props = defineProps<Props>()
+const structure = computed(() => normalizeConstruction(props.construction))
+const legLift = computed(() => constructionBodyLift(structure.value, props.config))
 
 const emit = defineEmits<{
   (e: 'add-column-left'): void
@@ -338,7 +344,7 @@ function boundaryHeight(boundaryIndex: number): number {
 }
 
 const railBodyHeight = computed<number>(() => {
-  return props.columns.reduce((maxHeight, col) => Math.max(maxHeight, columnRenderedHeight(col)), 0) + Kl + Bt
+  return props.columns.reduce((maxHeight, col) => Math.max(maxHeight, columnRenderedHeight(col)), 0) + Kl + Bt + meterToPx(legLift.value)
 })
 
 const railBodyHeightPx = computed<string>(() => `${railBodyHeight.value}px`)
@@ -388,7 +394,7 @@ function addButtonMarginTop(boundaryIndex: number): string {
                 v-if="columns.length > 0"
                 class="column-resize-hit shrink-0 cursor-col-resize touch-none transition-opacity hover:opacity-75"
                 :class="selectedFillClass"
-                :style="{ ...spacerStyle('width'), ...columnResizeMarginStyle(), height: boundaryHeightPx(0) }"
+                :style="{ ...spacerStyle('width'), ...columnResizeMarginStyle(), height: boundaryHeightPx(0), marginBottom: px(legLift), opacity: structure.leftSide ? undefined : 0.15 }"
                 role="separator"
                 aria-orientation="vertical"
                 aria-label="Resize column 1"
@@ -428,7 +434,7 @@ function addButtonMarginTop(boundaryIndex: number): string {
                       <span
                         v-if="col.modules.length > 0"
                         class="block w-full shrink-0"
-                        :class="selectedFillClass"
+                        :class="[selectedFillClass, { invisible: !structure.bottom }]"
                         :style="spacerStyle('height')"
                         aria-hidden="true"
                       />
@@ -445,6 +451,14 @@ function addButtonMarginTop(boundaryIndex: number): string {
                           :aria-label="`${mod.type} module, height ${formatMeasurement(mod.height)} meters`"
                           @click.stop="onModuleClick($event, mod.id)"
                         >
+                          <div
+                            v-for="i in interiorShelfCount(mod)"
+                            :key="`${mod.id}-shelf-${i}`"
+                            class="pointer-events-none absolute inset-x-0 border-t border-current"
+                            :class="mod.type === 'shelf' ? 'opacity-60' : 'border-dashed opacity-40'"
+                            :style="{ bottom: `${i / (interiorShelfCount(mod) + 1) * 100}%` }"
+                            aria-hidden="true"
+                          />
                           <template v-if="mod.type === 'drawer'">
                             <div
                               v-for="i in drawerCount(mod) - 1"
@@ -512,19 +526,20 @@ function addButtonMarginTop(boundaryIndex: number): string {
                         >
                           <span
                             class="absolute inset-x-0 top-1/2 -translate-y-1/2"
-                            :class="selectedFillClass"
+                            :class="[selectedFillClass, { invisible: mi === col.modules.length - 1 && !structure.top }]"
                             :style="spacerStyle('height')"
                           />
                         </button>
                       </template>
                     </div>
                   </div>
+                  <ProjectFrontLegs :width="col.width" :config="config" :construction="structure" :pixels-per-meter="pxPerMeter" />
                 </div>
 
                 <div
                   class="column-resize-hit shrink-0 cursor-col-resize touch-none transition-opacity hover:opacity-75"
                   :class="selectedFillClass"
-                  :style="{ ...spacerStyle('width'), ...columnResizeMarginStyle(), height: boundaryHeightPx(ci + 1) }"
+                  :style="{ ...spacerStyle('width'), ...columnResizeMarginStyle(), height: boundaryHeightPx(ci + 1), marginBottom: px(legLift), opacity: ci === columns.length - 1 && !structure.rightSide ? 0.15 : undefined }"
                   role="separator"
                   aria-orientation="vertical"
                   :aria-label="`Resize column ${ci + 1}`"

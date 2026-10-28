@@ -1,4 +1,8 @@
 import * as Y from 'yjs'
+import { normalizeShelfCount } from '~~/shared/domain/interior'
+import { inheritedThicknesses, NEW_THICKNESS_KEYS } from '~~/shared/domain/thickness'
+import { CONSTRUCTION_PANEL_KEYS, normalizeConstruction } from '~~/shared/domain/construction'
+import type { ConstructionPatch, FurnitureConstruction } from '~~/shared/domain/types'
 import {
   DEFAULT_FURNITURE_CONFIG,
   defaultModule,
@@ -40,6 +44,16 @@ export const MIGRATIONS: { id: string, run(map: Y.Map<unknown>): void }[] = [
       cfg.delete('drawerInnerInset')
     },
   },
+  {
+    id: '1793059200000_full_height_modules',
+    run(map) {
+      const cfg = map.get('config') as Y.Map<unknown> | undefined
+      // Keep custom limits; raise only the old defaults.
+      for (const key of ['maxColumnWidth', 'maxModuleHeight'] as const) {
+        if (cfg?.get(key) === 1.2) cfg.set(key, DEFAULT_FURNITURE_CONFIG[key])
+      }
+    },
+  },
 ]
 
 const ROOT_KEY = 'furniture'
@@ -72,14 +86,18 @@ export function ensureInitialized(doc: Y.Doc) {
     }
     else {
       const cfg = map.get('config') as Y.Map<unknown>
+      const inherited = inheritedThicknesses(cfg.toJSON())
       for (const k of FURNITURE_CONFIG_WRITABLE_KEYS) {
         const value = cfg.get(k)
         if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-          cfg.set(k, DEFAULT_FURNITURE_CONFIG[k])
+          cfg.set(k, k in inherited ? inherited[k as keyof typeof inherited] : DEFAULT_FURNITURE_CONFIG[k])
         }
       }
     }
     runPendingMigrations(doc)
+    if (!(map.get('construction') instanceof Y.Map)) {
+      map.set('construction', toYConstruction(normalizeConstruction(map.get('construction'))))
+    }
     if (!map.has('columns')) {
       const cols = new Y.Array<Y.Map<unknown>>()
       map.set('columns', cols)
@@ -148,10 +166,10 @@ export function readFurnitureDoc(doc: Y.Doc): FurnitureDoc {
   const map = getFurnitureMap(doc)
   const cfg = map.get('config') as Y.Map<unknown>
   const cols = map.get('columns') as Y.Array<Y.Map<unknown>>
-  const config = { ...DEFAULT_FURNITURE_CONFIG } as FurnitureConfig
+  const config = { ...DEFAULT_FURNITURE_CONFIG, ...inheritedThicknesses(cfg?.toJSON() ?? {}) } as FurnitureConfig
   for (const k of FURNITURE_CONFIG_WRITABLE_KEYS) {
     const v = cfg?.get(k)
-    config[k] = sanitizeConfigValue(k, v)
+    config[k] = sanitizeConfigValue(k, v ?? config[k])
   }
   const columns: FurnitureColumn[] = []
   cols?.forEach((cm) => {
@@ -167,6 +185,8 @@ export function readFurnitureDoc(doc: Y.Doc): FurnitureDoc {
       const height = typeof rawHeight === 'number' && Number.isFinite(rawHeight) && rawHeight > 0 ? snapMetric(rawHeight) : DEFAULT_SHELF_HEIGHT
       const drawerCount = mm.get('drawerCount') as number | undefined
       const m: FurnitureModule = { id, type, height }
+      const interior = mm.get('interior') as Y.Map<unknown> | undefined
+      if (interior instanceof Y.Map) m.interior = { shelfCount: normalizeShelfCount(interior.get('shelfCount')) }
       if (type === 'drawer' && typeof drawerCount === 'number' && Number.isFinite(drawerCount)) {
         m.drawerCount = Math.max(DRAWER_COUNT_MIN, Math.min(DRAWER_COUNT_MAX, Math.round(drawerCount)))
       }
@@ -179,7 +199,48 @@ export function readFurnitureDoc(doc: Y.Doc): FurnitureDoc {
     lastAppliedMigrationId: (map.get('lastAppliedMigrationId') as string | null) ?? null,
     config,
     columns,
+    construction: readConstruction(doc),
   }
+}
+
+function readConstruction(doc: Y.Doc): FurnitureConstruction {
+  const stored = getFurnitureMap(doc).get('construction')
+  return normalizeConstruction(stored instanceof Y.Map ? stored.toJSON() : stored)
+}
+
+function toYConstruction(value: FurnitureConstruction): Y.Map<unknown> {
+  const map = new Y.Map<unknown>()
+  for (const key of CONSTRUCTION_PANEL_KEYS) map.set(key, value[key])
+  const legs = new Y.Map<unknown>()
+  for (const [key, v] of Object.entries(value.legs)) legs.set(key, v)
+  map.set('legs', legs)
+  return map
+}
+
+export function updateConstruction(doc: Y.Doc, patch: ConstructionPatch) {
+  doc.transact(() => {
+    const root = getFurnitureMap(doc)
+    let map = root.get('construction') as Y.Map<unknown>
+    if (!(map instanceof Y.Map)) {
+      map = toYConstruction(readConstruction(doc))
+      root.set('construction', map)
+    }
+    const current = readConstruction(doc)
+    const next = normalizeConstruction({ ...current, ...patch, legs: { ...current.legs, ...patch.legs } })
+    for (const key of CONSTRUCTION_PANEL_KEYS) {
+      if (key in patch) map.set(key, next[key])
+    }
+    if (patch.legs) {
+      let legs = map.get('legs') as Y.Map<unknown>
+      if (!(legs instanceof Y.Map)) {
+        legs = new Y.Map<unknown>()
+        map.set('legs', legs)
+      }
+      for (const key of ['enabled', 'height', 'width', 'inset'] as const) {
+        if (key in patch.legs) legs.set(key, next.legs[key])
+      }
+    }
+  }, 'updateConstruction')
 }
 
 // ---------------- Y converters ----------------
@@ -188,6 +249,11 @@ export function toYModule(m: FurnitureModule): Y.Map<unknown> {
   y.set('id', m.id)
   y.set('type', m.type)
   y.set('height', m.height)
+  if (m.interior) {
+    const interior = new Y.Map<unknown>()
+    interior.set('shelfCount', normalizeShelfCount(m.interior.shelfCount))
+    y.set('interior', interior)
+  }
   if (typeof m.drawerCount === 'number') y.set('drawerCount', m.drawerCount)
   return y
 }
@@ -269,24 +335,48 @@ export function setDrawerCount(doc: Y.Doc, columnIndex: number, moduleIndex: num
   }, 'setDrawerCount')
 }
 
+export function setInteriorShelfCount(doc: Y.Doc, columnIndex: number, moduleIndex: number, count: number) {
+  doc.transact(() => {
+    const cols = getFurnitureMap(doc).get('columns') as Y.Array<Y.Map<unknown>>
+    const modules = cols.get(columnIndex)?.get('modules') as Y.Array<Y.Map<unknown>> | undefined
+    const module = modules?.get(moduleIndex)
+    if (!module || module.get('type') === 'drawer') return
+    let interior = module.get('interior') as Y.Map<unknown> | undefined
+    if (!(interior instanceof Y.Map)) {
+      interior = new Y.Map<unknown>()
+      module.set('interior', interior)
+    }
+    interior.set('shelfCount', normalizeShelfCount(count))
+  }, 'setInteriorShelfCount')
+}
+
 export function setConfigValue<K extends keyof FurnitureConfig>(doc: Y.Doc, key: K, value: FurnitureConfig[K]) {
   doc.transact(() => {
     const cfg = getFurnitureMap(doc).get('config') as Y.Map<unknown>
+    // Cubrir también documentos antiguos que sigan abiertos durante una actualización.
+    if (cfg) {
+      const inherited = inheritedThicknesses(cfg.toJSON())
+      for (const inheritedKey of NEW_THICKNESS_KEYS) {
+        if (!cfg.has(inheritedKey)) cfg.set(inheritedKey, inherited[inheritedKey])
+      }
+    }
     cfg?.set(key as string, sanitizeConfigValue(key, value))
   }, 'setConfigValue')
 }
 
-export function replaceFurnitureDoc(doc: Y.Doc, next: Pick<FurnitureDoc, 'config' | 'columns'>) {
+export function replaceFurnitureDoc(doc: Y.Doc, next: Pick<FurnitureDoc, 'config' | 'columns' | 'construction'>) {
   doc.transact(() => {
     const map = getFurnitureMap(doc)
     map.set('schemaVersion', DESIGN_SCHEMA_VERSION)
+    map.set('construction', toYConstruction(normalizeConstruction(next.construction)))
     let cfg = map.get('config') as Y.Map<unknown> | undefined
     if (!cfg) {
       cfg = new Y.Map<unknown>()
       map.set('config', cfg)
     }
+    const inherited = inheritedThicknesses(next.config)
     for (const key of FURNITURE_CONFIG_WRITABLE_KEYS) {
-      cfg.set(key, sanitizeConfigValue(key, next.config[key]))
+      cfg.set(key, sanitizeConfigValue(key, next.config[key] ?? (key in inherited ? inherited[key as keyof typeof inherited] : undefined)))
     }
 
     let cols = map.get('columns') as Y.Array<Y.Map<unknown>> | undefined

@@ -47,7 +47,7 @@ export async function useEditorState(projectId: string) {
     snapshot.id = projectId
     snapshot.projectId = projectId
     ;(snapshot as ProjectEditorStateRow & { updatedAt: string }).updatedAt = new Date().toISOString()
-    if (snapshot.viewMode !== 'assembly' && snapshot.viewMode !== 'cutlist' && snapshot.viewMode !== 'style') snapshot.viewMode = 'assembly'
+    if (snapshot.viewMode !== 'assembly' && snapshot.viewMode !== 'cutlist' && snapshot.viewMode !== 'style' && snapshot.viewMode !== 'construction') snapshot.viewMode = 'assembly'
     snapshot.camera = snapshot.camera ?? defaultCameraState()
     snapshot.renderMode = snapshot.renderMode === 'technical' ? 'technical' : 'render-debug'
     snapshot.publicStyle = normalizePublicStyle(snapshot.publicStyle)

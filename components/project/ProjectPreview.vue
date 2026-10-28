@@ -1,11 +1,15 @@
 <script setup lang="ts">
+import ProjectFrontLegs from './ProjectFrontLegs.vue'
 import { DEFAULT_FURNITURE_CONFIG } from '~~/shared/domain/defaults'
-import type { FurnitureColumn, FurnitureConfig, FurnitureModule } from '~~/shared/domain/types'
+import type { FurnitureColumn, FurnitureConfig, FurnitureModule, FurnitureConstruction } from '~~/shared/domain/types'
+import { interiorShelfCount } from '~~/shared/domain/interior'
+import { constructionBodyLift, normalizeConstruction } from '~~/shared/domain/construction'
 
 interface Props {
   columns: FurnitureColumn[]
   furnitureConfig?: FurnitureConfig | null
   config?: FurnitureConfig | null
+  construction?: FurnitureConstruction | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -19,6 +23,8 @@ const MODULE_GAP = 3
 const RAIL_SIZE = 2
 
 const furnitureConfig = computed<FurnitureConfig>(() => props.furnitureConfig ?? props.config ?? DEFAULT_FURNITURE_CONFIG)
+const structure = computed(() => normalizeConstruction(props.construction))
+const legLift = computed(() => constructionBodyLift(structure.value, furnitureConfig.value))
 
 function pxValue(metres: number): number {
   if (!Number.isFinite(metres) || metres <= 0) return 0
@@ -44,7 +50,7 @@ function columnRenderedHeight(column: FurnitureColumn): number {
 
 const previewHeight = computed<string>(() => {
   const height = props.columns.reduce((maxHeight, column) => Math.max(maxHeight, columnRenderedHeight(column)), 0)
-  return `${Math.max(48, height)}px`
+  return `${Math.max(48, height + pxValue(legLift.value))}px`
 })
 
 function boundaryHeightPx(boundaryIndex: number): string {
@@ -148,7 +154,7 @@ function moduleClass(mod: FurnitureModule): string {
     >
       <div
         class="shrink-0 bg-primary"
-        :style="{ width: `${RAIL_SIZE}px`, height: boundaryHeightPx(0) }"
+        :style="{ width: `${RAIL_SIZE}px`, height: boundaryHeightPx(0), marginBottom: px(legLift), opacity: structure.leftSide ? 1 : 0 }"
         aria-hidden="true"
       />
 
@@ -169,6 +175,7 @@ function moduleClass(mod: FurnitureModule): string {
               :style="{ gap: `${MODULE_GAP}px` }"
             >
               <span
+                :class="{ invisible: !structure.bottom }"
                 class="block w-full shrink-0 bg-primary"
                 :style="{ height: `${RAIL_SIZE}px` }"
                 aria-hidden="true"
@@ -183,6 +190,14 @@ function moduleClass(mod: FurnitureModule): string {
                   :style="{ height: px(mod.height) }"
                   :aria-label="`${mod.type} preview`"
                 >
+                  <div
+                    v-for="i in interiorShelfCount(mod)"
+                    :key="`${mod.id}-shelf-${i}`"
+                    class="absolute inset-x-0 border-t border-current"
+                    :class="mod.type === 'shelf' ? 'opacity-60' : 'border-dashed opacity-40'"
+                    :style="{ bottom: `${i / (interiorShelfCount(mod) + 1) * 100}%` }"
+                    aria-hidden="true"
+                  />
                   <template v-if="mod.type === 'drawer'">
                     <div
                       v-for="i in (mod.drawerCount ?? 1) - 1"
@@ -235,6 +250,7 @@ function moduleClass(mod: FurnitureModule): string {
                 </div>
 
                 <span
+                  :class="{ invisible: mi === col.modules.length - 1 && !structure.top }"
                   class="block w-full shrink-0 bg-primary"
                   :style="{ height: `${RAIL_SIZE}px` }"
                   aria-hidden="true"
@@ -242,11 +258,12 @@ function moduleClass(mod: FurnitureModule): string {
               </template>
             </div>
           </div>
+          <ProjectFrontLegs :width="col.width" :config="furnitureConfig" :construction="structure" :pixels-per-meter="PX_PER_M" />
         </div>
 
         <div
           class="shrink-0 bg-primary"
-          :style="{ width: `${RAIL_SIZE}px`, height: boundaryHeightPx(ci + 1) }"
+          :style="{ width: `${RAIL_SIZE}px`, height: boundaryHeightPx(ci + 1), marginBottom: px(legLift), opacity: ci === columns.length - 1 && !structure.rightSide ? 0 : 1 }"
           aria-hidden="true"
         />
       </template>
