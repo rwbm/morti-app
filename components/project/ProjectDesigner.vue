@@ -270,7 +270,9 @@ function updateSelectedModulesDrawerCount(drawerCount: number) {
   for (const info of selectedModuleInfos.value) {
     if (info.module.type === 'drawer') {
       setDrawerCount(props.ydoc, info.columnIndex, info.moduleIndex, next)
-      setModuleHeightWithDrawerClamp(info.columnIndex, info.moduleIndex, { ...info.module, drawerCount: next }, info.module.height)
+      // La cantidad elegida es explícita: ajustar el alto, sin volver a agregar cajones.
+      const height = clampModuleHeight({ ...info.module, drawerCount: next }, info.module.height)
+      setModuleHeight(props.ydoc, info.columnIndex, info.moduleIndex, height)
     }
   }
 }
@@ -884,6 +886,7 @@ if (getCurrentScope()) {
                         @keydown.enter.prevent="onSelectedDrawerCountCommit"
                         @blur="onSelectedDrawerCountCommit"
                       >
+                      <p class="mt-1 text-muted">De 1 a 32. El alto del bloque se ajusta si supera los límites por cajón.</p>
                     </dd>
                   </template>
                   <template v-if="selectedSupportsShelves">
