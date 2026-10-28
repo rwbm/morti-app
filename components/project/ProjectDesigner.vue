@@ -17,6 +17,7 @@ import {
   setColumnWidth,
   setConfigValue,
   setDrawerCount,
+  setExteriorDimensions,
   setInteriorShelfCount,
   setModuleHeight,
   setModuleType,
@@ -461,6 +462,22 @@ const selectedHeightValue = computed(() => {
   return typeof first === 'number' && selectedModuleInfos.value.every(info => info.module.height === first) ? String(first) : ''
 })
 
+const furnitureDepthValue = computed(() => String(snapshot.value.exterior?.depth ?? config.value.depth))
+
+function onFurnitureDepthCommit(event: Event) {
+  const input = event.target as HTMLInputElement
+  const value = parsePositiveMetric(input.value)
+  if (value !== null && value <= 20) {
+    if (snapshot.value.exterior) {
+      setExteriorDimensions(props.ydoc, { ...snapshot.value.exterior, depth: value })
+    }
+    else {
+      setConfigValue(props.ydoc, 'depth', value)
+    }
+  }
+  input.value = furnitureDepthValue.value
+}
+
 const selectedDrawerCountValue = computed(() => {
   if (selectedTypeValue.value !== 'drawer') return ''
   const first = selectedModuleInfos.value[0]?.module.drawerCount
@@ -833,6 +850,23 @@ if (getCurrentScope()) {
                       >
                       <span class="shrink-0 text-muted">m</span>
                     </div>
+                  </dd>
+
+                  <dt class="self-center text-muted">Profundidad</dt>
+                  <dd class="min-w-0">
+                    <div class="flex items-center gap-1">
+                      <input
+                        :value="furnitureDepthValue"
+                        type="text"
+                        inputmode="decimal"
+                        class="w-full min-w-0 rounded-md bg-muted px-2 py-1 text-xs tabular-nums text-highlighted shadow-sm outline-none focus:bg-elevated"
+                        aria-label="Profundidad del mueble en metros"
+                        @keydown.enter.prevent="onFurnitureDepthCommit"
+                        @blur="onFurnitureDepthCommit"
+                      >
+                      <span class="shrink-0 text-muted">m</span>
+                    </div>
+                    <p class="mt-1 text-muted">{{ snapshot.exterior ? 'Profundidad exterior total.' : 'Profundidad del cuerpo.' }} Se aplica a todo el mueble.</p>
                   </dd>
 
                   <template v-if="selectedTypeValue === 'drawer'">

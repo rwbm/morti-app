@@ -17,6 +17,7 @@ const emit = defineEmits<{
   (e: 'exterior', value: ExteriorDimensions | null): void
   (e: 'update', patch: ConstructionPatch): void
   (e: 'thickness', key: ThicknessKey, value: number): void
+  (e: 'depth', value: number): void
 }>()
 const parts = [
   { key: 'leftSide', label: 'Lateral izquierdo' },
@@ -53,6 +54,19 @@ function commitExterior(key: keyof ExteriorDimensions, event: Event) {
   const value = Math.round(mm * 1000) / 1e6
   emit('exterior', { ...props.exterior, [key]: value })
   input.value = formatMillimetres(value)
+}
+
+function commitDepth(event: Event) {
+  const input = event.target as HTMLInputElement
+  const mm = input.value.trim() === '' ? NaN : Number(input.value.replace(',', '.'))
+  if (Number.isFinite(mm) && mm >= 1 && mm <= 20000) {
+    const value = Math.round(mm * 1000) / 1e6
+    emit('depth', value)
+    input.value = formatMillimetres(value)
+  }
+  else {
+    input.value = formatMillimetres(props.config.depth)
+  }
 }
 
 function changeTopMode(event: Event) {
@@ -127,7 +141,16 @@ function commitLegMetric(key: typeof legFields[number]['key'], event: Event) {
             <p class="text-xs text-muted">Incluye patas, frentes cerrados y el vuelo de la tapa. Cambiar espesores o apoyos conserva este tamaño y recalcula el interior.</p>
             <p class="text-xs text-muted">Las columnas y módulos se reparten proporcionalmente. Sus medidas en Diseño ajustan el reparto dentro del tamaño total.</p>
           </template>
-          <p v-else class="text-xs text-muted">Modo nominal: las medidas de Diseño definen módulos entre ejes. El tamaño exterior depende de espesores, patas y tapa.</p>
+          <template v-else>
+            <label class="flex items-center justify-between gap-3 text-sm">
+              <span>Profundidad del cuerpo</span>
+              <span class="flex items-center gap-2">
+                <input :value="formatMillimetres(config.depth)" type="text" inputmode="decimal" aria-label="Profundidad del cuerpo en milímetros" class="w-24 rounded-md bg-default px-2 py-1.5 text-right tabular-nums outline-none focus:ring-2 focus:ring-primary" @blur="commitDepth" @keydown.enter.prevent="commitDepth">
+                <span class="text-xs text-muted">mm</span>
+              </span>
+            </label>
+            <p class="text-xs text-muted">Modo nominal: las medidas de Diseño definen módulos entre ejes. El tamaño exterior depende de espesores, patas y tapa.</p>
+          </template>
           <p v-if="actualDimensions" class="rounded-md bg-default p-3 text-xs tabular-nums">Exterior calculado: <strong>{{ formatMillimetres(actualDimensions.width) }} × {{ formatMillimetres(actualDimensions.height) }} × {{ formatMillimetres(actualDimensions.depth) }} mm</strong><br>Ancho × alto × profundidad</p>
           <p v-if="exterior && usefulWidths.length" class="text-xs text-muted">Anchos útiles de columnas: {{ usefulWidths.map((width, i) => `${String.fromCharCode(65 + i)}: ${formatMillimetres(width)} mm`).join(' · ') }}</p>
         </fieldset>
