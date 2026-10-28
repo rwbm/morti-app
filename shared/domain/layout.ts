@@ -43,7 +43,8 @@ export function buildCellGrid(columns: FurnitureColumn[], config: FurnitureConfi
       const xMin = columnCenterX - columnWidth / 2 + config.panelThickness / 2 + config.panelJointClearance
       const xMax = columnCenterX + columnWidth / 2 - config.panelThickness / 2 - config.panelJointClearance
       const yMin = moduleBaseY + config.panelThickness / 2 + config.panelJointClearance
-      const yMax = moduleTopY - config.panelThickness / 2 - config.panelJointClearance
+      const overlayTop = construction.top && construction.topMode === 'overlay' && moduleIndex === column.modules.length - 1
+      const yMax = moduleTopY + (overlayTop ? config.sidePanelOverhang : -config.panelThickness / 2) - config.panelJointClearance
       const zMin = -config.depth / 2 + (construction.back ? config.backPanelInset + config.backPanelThickness : 0) + config.panelJointClearance
       const zMax = config.depth / 2 - config.panelJointClearance
       columnCells.push({

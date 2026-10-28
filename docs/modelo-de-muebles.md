@@ -65,7 +65,7 @@ los controles. La pestaña elegida se conserva en el estado local del editor.
 - La configuración participa de la sincronización, deshacer/rehacer, archivos
   `.morti`, miniaturas, vista frontal y exportación 3D. La IA conserva la estructura
   elegida por el usuario al regenerar los compartimentos.
-- El esquema actual es 6 y el compilador 5. La inicialización agrega la estructura
+- El esquema actual es 7 y el compilador 6. La inicialización agrega la estructura
   por defecto a los documentos anteriores sin cambiar su geometría.
 
 Los espesores ahora se definen por grupo en Estructura: cuerpo/estantes, puertas,
@@ -73,6 +73,29 @@ fondo del mueble, frentes de cajón, laterales/traseras de cajón y fondos de ca
 Los proyectos anteriores heredan sus espesores personalizados una sola vez.
 El fondo conserva el montaje ranurado existente. Aún faltan espesores por pieza, otros encuentros,
 fondos superpuestos, patas de otros tipos y zócalos.
+
+## Medidas exteriores y cubiertas
+
+`FurnitureDoc.exterior` es opcional y fija ancho, alto y profundidad en metros.
+La interfaz los presenta en mm. Si falta, se conserva el comportamiento nominal
+de los proyectos anteriores. Al activarlo se parte del tamaño físico actual.
+
+El cálculo resuelve el reparto nominal de columnas y módulos y la profundidad
+del cuerpo a partir de los límites físicos de las piezas cerradas. No escala
+espesores, patas, holguras ni vuelos. Los cambios se guardan en una transacción;
+deshacer/rehacer incluye el recálculo. Al volver a nominal se conservan las piezas
+calculadas. La vista 3D sitúa el conjunto sobre el suelo y centra la envolvente.
+Si el tamaño no puede alcanzarse o el interior queda sin espacio, se muestra un error.
+
+El compilador de paneles (`assembly-panels.ts`) está separado de la geometría CSG.
+El cálculo de dimensiones (`dimensions.ts`) mide piezas sin construir mallas; el
+despiece, la validación, el guardado y la vista 3D consumen la misma resolución.
+
+`construction.topMode` admite `inset`, `overlay` y `cap`. El valor predeterminado
+es `inset`. La cubierta exterior es una pieza continua con rol `top-panel`,
+espesor estructural y vuelo simétrico `topOverhang`. `overlay` reemplaza las tapas
+interiores superiores; `cap` las conserva. Las ranuras del fondo se asignan a la
+cubierta solo en las columnas que llegan a ella. Las alturas desiguales se avisan.
 
 ## Próximos pasos
 

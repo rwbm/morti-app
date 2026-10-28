@@ -504,6 +504,7 @@ function formatConfigValue(field: ConfigField) {
 }
 
 function summaryLabel(field: ConfigField) {
+  if (field.key === 'depth') return snapshot.value.exterior ? 'Profundidad del cuerpo' : 'Profundidad'
   if (field.key === 'panelThickness') return 'Thickness'
   if (field.key === 'sidePanelOverhang') return 'Overhang'
   return field.label
@@ -962,6 +963,7 @@ if (getCurrentScope()) {
                   </div>
 
                   <dl class="grid max-h-[min(24rem,55vh)] grid-cols-[1fr_auto] gap-x-3 gap-y-2 overflow-y-auto pr-1 text-xs">
+                    <p v-if="snapshot.exterior" class="col-span-2 rounded-md bg-muted p-2 text-xs text-muted">El tamaño exterior está fijado. Modificá sus medidas en Estructura; la profundidad del cuerpo se calcula automáticamente.</p>
                     <template
                       v-for="field in projectDesignerConfigFields"
                       :key="field.key"
@@ -989,6 +991,7 @@ if (getCurrentScope()) {
                         <div class="flex items-center gap-1">
                           <input
                             :value="formatConfigValue(field)"
+                            :disabled="field.key === 'depth' && !!snapshot.exterior"
                             type="text"
                             inputmode="decimal"
                             class="w-20 rounded-md bg-muted px-2 py-1 text-right text-xs tabular-nums text-highlighted shadow-sm outline-none ring-0 transition-colors duration-150 focus:bg-elevated"

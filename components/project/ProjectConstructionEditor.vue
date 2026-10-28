@@ -3,12 +3,17 @@ import type * as Y from 'yjs'
 import ProjectConstructionPanel from './ProjectConstructionPanel.vue'
 import { normalizeConstruction } from '~~/shared/domain/construction'
 import { validateFurnitureDocIssues } from '~~/shared/domain/assembly-validation'
-import { readFurnitureDoc, updateConstruction, setConfigValue } from '~~/shared/yjs/doc'
+import { readFurnitureDoc, updateConstruction, setConfigValue, setExteriorDimensions } from '~~/shared/yjs/doc'
+import { assemblyBounds, resolveFurnitureDimensions } from '~~/shared/domain/dimensions'
 
 const props = defineProps<{ ydoc: Y.Doc }>()
 const snapshot = shallowRef(readFurnitureDoc(props.ydoc))
 const construction = computed(() => normalizeConstruction(snapshot.value.construction))
 const issues = computed(() => validateFurnitureDocIssues(snapshot.value))
+const actualDimensions = computed(() => {
+  const bounds = assemblyBounds(resolveFurnitureDimensions(snapshot.value).assembly.panels)
+  return bounds ? { width: bounds.width, height: bounds.height, depth: bounds.depth } : null
+})
 
 function refreshSnapshot() {
   snapshot.value = readFurnitureDoc(props.ydoc)
@@ -30,8 +35,11 @@ onScopeDispose(() => props.ydoc.off('update', refreshSnapshot))
       :config="snapshot.config"
       :columns="snapshot.columns"
       :issues="issues"
+      :exterior="snapshot.exterior"
+      :actual-dimensions="actualDimensions"
       @update="patch => updateConstruction(props.ydoc, patch)"
       @thickness="(key, value) => setConfigValue(props.ydoc, key, value)"
+      @exterior="value => setExteriorDimensions(props.ydoc, value)"
     />
   </div>
 </template>

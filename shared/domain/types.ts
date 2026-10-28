@@ -20,12 +20,20 @@ export interface FurnitureConstruction {
   top: boolean
   bottom: boolean
   back: boolean
+  topMode: 'inset' | 'overlay' | 'cap'
+  topOverhang: number
   legs: {
     enabled: boolean
     height: number
     width: number
     inset: number
   }
+}
+
+export interface ExteriorDimensions {
+  width: number
+  height: number
+  depth: number
 }
 
 export type ConstructionPatch = Partial<Omit<FurnitureConstruction, 'legs'>> & {
@@ -64,6 +72,7 @@ export interface FurnitureDoc {
   config: FurnitureConfig
   columns: FurnitureColumn[]
   construction?: FurnitureConstruction
+  exterior?: ExteriorDimensions
 }
 
 export type RenderStyle = 'rendered' | 'technical'
@@ -179,6 +188,7 @@ export type PanelRole =
   | 'drawer-back'
   | 'drawer-bottom'
   | 'leg'
+  | 'top-panel'
 
 export type OperationType = 'through-hole' | 'rail-cut'
 
@@ -269,8 +279,9 @@ export const PANEL_ROLE_SHORT_CODE: Record<PanelRole, string> = {
   'drawer-back': 'DRB',
   'drawer-bottom': 'DBM',
   leg: 'P',
+  'top-panel': 'T',
 }
 
-export const DESIGN_SCHEMA_VERSION = 6
-export const ASSEMBLY_COMPILER_VERSION = 5
+export const DESIGN_SCHEMA_VERSION = 7
+export const ASSEMBLY_COMPILER_VERSION = 6
 export const TECHNICAL_RENDERER_VERSION = 1

@@ -64,7 +64,7 @@ export async function useDesignDoc(projectId: string) {
   const furnitureMap = getFurnitureMap(doc)
   const undoManager = new Y.UndoManager(furnitureMap, {
     captureTimeout: 250,
-    trackedOrigins: new Set<unknown>([null, undefined, 'setInteriorShelfCount', 'updateConstruction', 'setConfigValue']),
+    trackedOrigins: new Set<unknown>([null, undefined, 'setInteriorShelfCount', 'updateConstruction', 'setConfigValue', 'setExteriorDimensions', 'insertColumn', 'removeColumn', 'setColumnWidth', 'insertModule', 'removeModule', 'setModuleType', 'setModuleHeight', 'setDrawerCount']),
   })
 
   const state = ref<FurnitureDoc>(readFurnitureDoc(doc))

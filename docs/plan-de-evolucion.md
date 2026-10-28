@@ -30,7 +30,10 @@ sus piezas, y los cambios sobreviven a deshacer/rehacer e importación/exportaci
 
 ## 2. Medidas exteriores finales
 
-Estado: siguiente entrega.
+Estado: implementado como modo opcional «Fijar medidas exteriores» en Estructura.
+El conjunto se mide con sus piezas cerradas y se recalculan los parámetros del
+cuerpo sin escalar espesores, holguras, patas ni vuelos. Los anchos y altos se
+reparten proporcionalmente; los huecos con medida fija quedan para otra entrega.
 
 Agregar un modo explícito de medidas exteriores, manteniendo el modo nominal de
 los proyectos anteriores hasta que el usuario elija convertirlos.
@@ -49,6 +52,12 @@ Aceptación: un mueble de 2000 × 800 × 450 mm mantiene esas dimensiones en el
 modelo y en el cálculo de sus límites, con y sin patas y al cambiar espesores.
 
 ## 3. Encuentros y montajes
+
+Primera parte implementada: tapa entre laterales, cubierta continua sobre ellos
+y sobretapa adicional, con vuelo por lado. Todas participan del tamaño exterior.
+La cubierta usa el espesor de cuerpo y estantes; su espesor propio y materiales
+por pieza quedan pendientes. Las columnas desiguales muestran un aviso porque
+pueden dejar huecos bajo la cubierta continua.
 
 Tapa/piso entre laterales o cubriéndolos; fondo ranurado, embutido o superpuesto;
 puertas dentro del hueco o superpuestas. Cada opción debe definir dimensiones,

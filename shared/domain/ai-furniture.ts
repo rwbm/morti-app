@@ -1,3 +1,4 @@
+import { normalizeExteriorDimensions } from './dimensions'
 import {
   DEFAULT_FURNITURE_CONFIG,
   DRAWER_COUNT_MAX,
@@ -126,6 +127,7 @@ function cloneDraft(draft: AiFurnitureDraft): AiFurnitureDraft {
       lastAppliedMigrationId: draft.doc.lastAppliedMigrationId,
       config: { ...draft.doc.config },
       construction: normalizeConstruction(draft.doc.construction),
+      ...(draft.doc.exterior ? { exterior: { ...draft.doc.exterior } } : {}),
       columns: draft.doc.columns.map(column => ({
         width: column.width,
         modules: column.modules.map(module => ({ ...module })),
@@ -346,6 +348,7 @@ export function normalizeAiFurnitureCurrentDoc(input: unknown): FurnitureDoc {
     config,
     columns,
     construction: normalizeConstruction(source.construction),
+    ...(normalizeExteriorDimensions(source.exterior) ? { exterior: normalizeExteriorDimensions(source.exterior) } : {}),
   }
 }
 

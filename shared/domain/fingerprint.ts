@@ -1,4 +1,4 @@
-import type { FurnitureConfig, FurnitureColumn, FurnitureConstruction } from './types'
+import type { FurnitureConfig, FurnitureColumn, FurnitureConstruction, ExteriorDimensions } from './types'
 import { normalizeConstruction } from './construction'
 
 // FNV-1a 32-bit over a UTF-8 string.
@@ -19,8 +19,8 @@ function stableStringify(value: unknown): string {
   return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify((value as Record<string, unknown>)[k])).join(',') + '}'
 }
 
-export function getProjectFingerprint(input: { columns: FurnitureColumn[], config: FurnitureConfig, construction?: FurnitureConstruction }): string {
-  const s = stableStringify({ columns: input.columns, config: input.config, construction: normalizeConstruction(input.construction) })
+export function getProjectFingerprint(input: { columns: FurnitureColumn[], config: FurnitureConfig, construction?: FurnitureConstruction, exterior?: ExteriorDimensions }): string {
+  const s = stableStringify({ columns: input.columns, config: input.config, construction: normalizeConstruction(input.construction), exterior: input.exterior ?? null })
   const h = fnv1a32(s).toString(16).padStart(8, '0')
   return `${s.length}:${h}`
 }

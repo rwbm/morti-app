@@ -289,6 +289,7 @@ function validateDraft(payload: unknown, current: FurnitureDoc, prompt: string) 
   const draft = applyAiFurniturePromptIntent(normalizeAiFurnitureDraft(payload, current.config), prompt)
   // AI edits the compartments; keep the construction chosen by the user.
   draft.doc.construction = current.construction
+  draft.doc.exterior = current.exterior
   const compiled = compileAssembly(draft.doc)
   const errors = compiled.issues.filter(issue => issue.severity === 'error')
   if (errors.length > 0) {

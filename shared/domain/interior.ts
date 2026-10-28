@@ -13,8 +13,8 @@ export function interiorShelfCount(module: FurnitureModule): number {
 }
 
 /** Free height in each opening after installing evenly spaced shelves. */
-export function interiorOpeningHeight(module: FurnitureModule, config: FurnitureConfig): number {
+export function interiorOpeningHeight(module: FurnitureModule, config: FurnitureConfig, usableHeight?: number): number {
   const count = interiorShelfCount(module)
-  const height = module.height - config.panelThickness - 2 * config.panelJointClearance
+  const height = usableHeight ?? module.height - config.panelThickness - 2 * config.panelJointClearance
   return (height - count * config.panelThickness) / (count + 1)
 }

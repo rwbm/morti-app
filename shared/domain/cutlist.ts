@@ -10,6 +10,7 @@ const roleCodes: Record<string, string> = {
   'drawer-back': 'D',
   'drawer-bottom': 'D',
   leg: 'P',
+  'top-panel': 'T',
 }
 
 export function panelRoleLabel(role: string): string {
@@ -23,6 +24,7 @@ export function panelRoleLabel(role: string): string {
     'drawer-back': 'Trasera de cajón',
     'drawer-bottom': 'Fondo de cajón',
     leg: 'Pata',
+    'top-panel': 'Tapa exterior',
   }
   return labels[role as PanelRole] ?? role
 }

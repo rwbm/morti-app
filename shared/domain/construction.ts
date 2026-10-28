@@ -10,6 +10,7 @@ export const LEG_METRIC_LIMITS = {
 export function defaultConstruction(): FurnitureConstruction {
   return {
     leftSide: true, rightSide: true, top: true, bottom: true, back: true,
+    topMode: 'inset', topOverhang: 0,
     legs: { enabled: false, height: 0.1, width: 0.04, inset: 0.03 },
   }
 }
@@ -19,6 +20,10 @@ export function normalizeConstruction(value: unknown): FurnitureConstruction {
   const source = value && typeof value === 'object' ? value as Record<string, unknown> : {}
   for (const key of CONSTRUCTION_PANEL_KEYS) {
     if (typeof source[key] === 'boolean') result[key] = source[key]
+  }
+  if (source.topMode === 'overlay' || source.topMode === 'cap') result.topMode = source.topMode
+  if (typeof source.topOverhang === 'number' && Number.isFinite(source.topOverhang)) {
+    result.topOverhang = Math.round(Math.max(0, Math.min(0.2, source.topOverhang)) * 1000) / 1000
   }
   const legs = source.legs && typeof source.legs === 'object' ? source.legs as Record<string, unknown> : {}
   if (typeof legs.enabled === 'boolean') result.legs.enabled = legs.enabled

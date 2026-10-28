@@ -1,3 +1,5 @@
+import { assemblyBounds, normalizeExteriorDimensions, resolveFurnitureDimensions } from '~~/shared/domain/dimensions'
+import type { ExteriorDimensions } from '~~/shared/domain/types'
 import * as Y from 'yjs'
 import { normalizeShelfCount } from '~~/shared/domain/interior'
 import { inheritedThicknesses, NEW_THICKNESS_KEYS } from '~~/shared/domain/thickness'
@@ -162,19 +164,19 @@ export function runPendingMigrations(doc: Y.Doc) {
 }
 
 // ---------------- Pojo readers ----------------
-export function readFurnitureDoc(doc: Y.Doc): FurnitureDoc {
+function readStoredFurnitureDoc(doc: Y.Doc): FurnitureDoc {
   const map = getFurnitureMap(doc)
   const cfg = map.get('config') as Y.Map<unknown>
   const cols = map.get('columns') as Y.Array<Y.Map<unknown>>
   const config = { ...DEFAULT_FURNITURE_CONFIG, ...inheritedThicknesses(cfg?.toJSON() ?? {}) } as FurnitureConfig
   for (const k of FURNITURE_CONFIG_WRITABLE_KEYS) {
     const v = cfg?.get(k)
-    config[k] = sanitizeConfigValue(k, v ?? config[k])
+    config[k] = k === 'depth' && typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v * 1e6) / 1e6 : sanitizeConfigValue(k, v ?? config[k])
   }
   const columns: FurnitureColumn[] = []
   cols?.forEach((cm) => {
     const rawWidth = cm.get('width')
-    const width = typeof rawWidth === 'number' && Number.isFinite(rawWidth) && rawWidth > 0 ? snapMetric(rawWidth) : DEFAULT_COLUMN_WIDTH
+    const width = typeof rawWidth === 'number' && Number.isFinite(rawWidth) && rawWidth > 0 ? Math.round(rawWidth * 1e6) / 1e6 : DEFAULT_COLUMN_WIDTH
     const ms = cm.get('modules') as Y.Array<Y.Map<unknown>> | undefined
     const modules: FurnitureModule[] = []
     ms?.forEach((mm) => {
@@ -182,7 +184,7 @@ export function readFurnitureDoc(doc: Y.Doc): FurnitureDoc {
       const rawType = mm.get('type')
       const type: ModuleType = rawType === 'drawer' || rawType === 'doors' || rawType === 'left-door' || rawType === 'right-door' || rawType === 'shelf' ? rawType : 'shelf'
       const rawHeight = mm.get('height')
-      const height = typeof rawHeight === 'number' && Number.isFinite(rawHeight) && rawHeight > 0 ? snapMetric(rawHeight) : DEFAULT_SHELF_HEIGHT
+      const height = typeof rawHeight === 'number' && Number.isFinite(rawHeight) && rawHeight > 0 ? Math.round(rawHeight * 1e6) / 1e6 : DEFAULT_SHELF_HEIGHT
       const drawerCount = mm.get('drawerCount') as number | undefined
       const m: FurnitureModule = { id, type, height }
       const interior = mm.get('interior') as Y.Map<unknown> | undefined
@@ -200,7 +202,62 @@ export function readFurnitureDoc(doc: Y.Doc): FurnitureDoc {
     config,
     columns,
     construction: readConstruction(doc),
+    ...(readExterior(doc) ? { exterior: readExterior(doc) } : {}),
   }
+}
+
+function readExterior(doc: Y.Doc): ExteriorDimensions | undefined {
+  const stored = getFurnitureMap(doc).get('exterior')
+  return normalizeExteriorDimensions(stored instanceof Y.Map ? stored.toJSON() : stored)
+}
+
+export function readFurnitureDoc(doc: Y.Doc): FurnitureDoc {
+  const stored = readStoredFurnitureDoc(doc)
+  return stored.exterior ? resolveFurnitureDimensions(stored).doc : stored
+}
+
+function fitExterior(doc: Y.Doc) {
+  const stored = readStoredFurnitureDoc(doc)
+  if (!stored.exterior) return
+  const resolved = resolveFurnitureDimensions(stored).doc
+  const root = getFurnitureMap(doc)
+  const cfg = root.get('config') as Y.Map<unknown>
+  cfg.set('depth', resolved.config.depth)
+  const columns = root.get('columns') as Y.Array<Y.Map<unknown>>
+  resolved.columns.forEach((column, ci) => {
+    const target = columns.get(ci)
+    target.set('width', column.width)
+    const modules = target.get('modules') as Y.Array<Y.Map<unknown>>
+    column.modules.forEach((module, mi) => modules.get(mi).set('height', module.height))
+  })
+}
+
+export function setExteriorDimensions(doc: Y.Doc, value: ExteriorDimensions | null) {
+  doc.transact(() => {
+    // Al volver a nominal, conservar las piezas calculadas y no recuperar un tamaño anterior.
+    fitExterior(doc)
+    const root = getFurnitureMap(doc)
+    if (value === null) root.delete('exterior')
+    else {
+      const normalized = normalizeExteriorDimensions(value)
+      if (!normalized) return
+      let map = root.get('exterior') as Y.Map<unknown>
+      if (!(map instanceof Y.Map)) {
+        map = new Y.Map<unknown>()
+        root.set('exterior', map)
+      }
+      for (const key of ['width', 'height', 'depth'] as const) {
+        if (map.get(key) !== normalized[key]) map.set(key, normalized[key])
+      }
+      fitExterior(doc)
+    }
+  }, 'setExteriorDimensions')
+}
+
+export function currentExteriorDimensions(doc: Y.Doc): ExteriorDimensions | null {
+  const assembly = resolveFurnitureDimensions(readStoredFurnitureDoc(doc)).assembly
+  const bounds = assemblyBounds(assembly.panels)
+  return bounds ? { width: bounds.width, height: bounds.height, depth: bounds.depth } : null
 }
 
 function readConstruction(doc: Y.Doc): FurnitureConstruction {
@@ -211,6 +268,8 @@ function readConstruction(doc: Y.Doc): FurnitureConstruction {
 function toYConstruction(value: FurnitureConstruction): Y.Map<unknown> {
   const map = new Y.Map<unknown>()
   for (const key of CONSTRUCTION_PANEL_KEYS) map.set(key, value[key])
+  map.set('topMode', value.topMode)
+  map.set('topOverhang', value.topOverhang)
   const legs = new Y.Map<unknown>()
   for (const [key, v] of Object.entries(value.legs)) legs.set(key, v)
   map.set('legs', legs)
@@ -230,6 +289,9 @@ export function updateConstruction(doc: Y.Doc, patch: ConstructionPatch) {
     for (const key of CONSTRUCTION_PANEL_KEYS) {
       if (key in patch) map.set(key, next[key])
     }
+    for (const key of ['topMode', 'topOverhang'] as const) {
+      if (key in patch) map.set(key, next[key])
+    }
     if (patch.legs) {
       let legs = map.get('legs') as Y.Map<unknown>
       if (!(legs instanceof Y.Map)) {
@@ -240,6 +302,7 @@ export function updateConstruction(doc: Y.Doc, patch: ConstructionPatch) {
         if (key in patch.legs) legs.set(key, next.legs[key])
       }
     }
+    fitExterior(doc)
   }, 'updateConstruction')
 }
 
@@ -272,6 +335,7 @@ export function insertColumn(doc: Y.Doc, atIndex: number, width = DEFAULT_COLUMN
   doc.transact(() => {
     const cols = getFurnitureMap(doc).get('columns') as Y.Array<Y.Map<unknown>>
     cols.insert(atIndex, [toYColumn(defaultColumn(width))])
+    fitExterior(doc)
   }, 'insertColumn')
 }
 
@@ -279,6 +343,7 @@ export function removeColumn(doc: Y.Doc, index: number) {
   doc.transact(() => {
     const cols = getFurnitureMap(doc).get('columns') as Y.Array<Y.Map<unknown>>
     cols.delete(index, 1)
+    fitExterior(doc)
   }, 'removeColumn')
 }
 
@@ -287,6 +352,7 @@ export function setColumnWidth(doc: Y.Doc, index: number, width: number) {
     const cols = getFurnitureMap(doc).get('columns') as Y.Array<Y.Map<unknown>>
     const col = cols.get(index)
     col?.set('width', typeof width === 'number' && Number.isFinite(width) && width > 0 ? snapMetric(width) : DEFAULT_COLUMN_WIDTH)
+    fitExterior(doc)
   }, 'setColumnWidth')
 }
 
@@ -298,6 +364,7 @@ export function insertModule(doc: Y.Doc, columnIndex: number, atIndex: number, t
     const m: FurnitureModule = { id: cryptoRandomId(), type, height: DEFAULT_SHELF_HEIGHT }
     if (type === 'drawer') m.drawerCount = DEFAULT_DRAWER_COUNT
     ms.insert(atIndex, [toYModule(m)])
+    fitExterior(doc)
   }, 'insertModule')
 }
 
@@ -306,6 +373,7 @@ export function removeModule(doc: Y.Doc, columnIndex: number, moduleIndex: numbe
     const cols = getFurnitureMap(doc).get('columns') as Y.Array<Y.Map<unknown>>
     const ms = cols.get(columnIndex)?.get('modules') as Y.Array<Y.Map<unknown>>
     if (ms && moduleIndex >= 0 && moduleIndex < ms.length) ms.delete(moduleIndex, 1)
+    fitExterior(doc)
   }, 'removeModule')
 }
 
@@ -316,6 +384,7 @@ export function setModuleType(doc: Y.Doc, columnIndex: number, moduleIndex: numb
     m.set('type', type)
     if (type === 'drawer' && !m.has('drawerCount')) m.set('drawerCount', DEFAULT_DRAWER_COUNT)
     if (type !== 'drawer' && m.has('drawerCount')) m.delete('drawerCount')
+    fitExterior(doc)
   }, 'setModuleType')
 }
 
@@ -323,6 +392,7 @@ export function setModuleHeight(doc: Y.Doc, columnIndex: number, moduleIndex: nu
   doc.transact(() => {
     const ms = (getFurnitureMap(doc).get('columns') as Y.Array<Y.Map<unknown>>).get(columnIndex)?.get('modules') as Y.Array<Y.Map<unknown>>
     ms.get(moduleIndex)?.set('height', typeof height === 'number' && Number.isFinite(height) && height > 0 ? snapMetric(height) : 0.1)
+    fitExterior(doc)
   }, 'setModuleHeight')
 }
 
@@ -332,6 +402,7 @@ export function setDrawerCount(doc: Y.Doc, columnIndex: number, moduleIndex: num
     const m = ms.get(moduleIndex)
     if (!m) return
     m.set('drawerCount', Math.max(DRAWER_COUNT_MIN, Math.min(DRAWER_COUNT_MAX, Math.round(drawerCount))))
+    fitExterior(doc)
   }, 'setDrawerCount')
 }
 
@@ -347,6 +418,7 @@ export function setInteriorShelfCount(doc: Y.Doc, columnIndex: number, moduleInd
       module.set('interior', interior)
     }
     interior.set('shelfCount', normalizeShelfCount(count))
+    fitExterior(doc)
   }, 'setInteriorShelfCount')
 }
 
@@ -361,14 +433,21 @@ export function setConfigValue<K extends keyof FurnitureConfig>(doc: Y.Doc, key:
       }
     }
     cfg?.set(key as string, sanitizeConfigValue(key, value))
+    fitExterior(doc)
   }, 'setConfigValue')
 }
 
-export function replaceFurnitureDoc(doc: Y.Doc, next: Pick<FurnitureDoc, 'config' | 'columns' | 'construction'>) {
+export function replaceFurnitureDoc(doc: Y.Doc, next: Pick<FurnitureDoc, 'config' | 'columns' | 'construction' | 'exterior'>) {
   doc.transact(() => {
     const map = getFurnitureMap(doc)
     map.set('schemaVersion', DESIGN_SCHEMA_VERSION)
     map.set('construction', toYConstruction(normalizeConstruction(next.construction)))
+    map.delete('exterior')
+    if (next.exterior) {
+      const exterior = new Y.Map<unknown>()
+      for (const key of ['width', 'height', 'depth'] as const) exterior.set(key, next.exterior[key])
+      map.set('exterior', exterior)
+    }
     let cfg = map.get('config') as Y.Map<unknown> | undefined
     if (!cfg) {
       cfg = new Y.Map<unknown>()
