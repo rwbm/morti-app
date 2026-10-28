@@ -39,7 +39,6 @@ onScopeDispose(() => props.ydoc.off('update', refreshSnapshot))
       :actual-dimensions="actualDimensions"
       @update="patch => updateConstruction(props.ydoc, patch)"
       @thickness="(key, value) => setConfigValue(props.ydoc, key, value)"
-      @depth="value => setConfigValue(props.ydoc, 'depth', value)"
       @exterior="value => setExteriorDimensions(props.ydoc, value)"
     />
   </div>
